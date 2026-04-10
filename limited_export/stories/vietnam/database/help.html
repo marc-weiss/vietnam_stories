@@ -1,0 +1,153 @@
+<html>
+
+<TITLE>Re: Vietnam - Search | Help</TITLE>
+ <body bgcolor="#000000" text="#EEEEEE" vlink = "#99cccc" link = "#99ccff" 
+topmargin=0 leftmargin=0 >
+<center> <img src="images/title.gif" alt = "Re: Vietnam"></center><p>
+<P>
+
+<CENTER>USING THIS SEARCH ENGINE</CENTER>
+
+
+<P>
+With PLWeb Turbo, you are strongly encouraged to use natural language queries, an example of which is shown below. 
+<P>
+<CENTER><TT>U.S. marines in the Vietnam War </TT></CENTER>
+<P>
+A natural language query is one that is expressed using normal conversational syntax; that is, you phrase your query as
+if making a spoken or written statement to another person. There are no syntax rules or conventions for you to learn. 
+<P>
+If you enter a multi-word query, PLWeb Turbo will retrieve all records that contain at least one of the words. For example, the
+following query: 
+<P>
+tribal politics in South Africa
+<P>
+would be interpreted as: 
+<P>
+tribal OR politics OR South OR Africa
+<P>
+Any record in the current database that contains one or more of those terms would satisfy the conditions of the search
+and therefore, be retrieved. 
+<P>PLWeb Turbo is not case-sensitive in accepting queries. You can enter query words in upper-case, lower-case, or a
+combination of the two. <P>
+<CENTER>CONCEPT SEARCHING</CENTER><P>
+
+This tool lets you search based on a general idea. In cases where you can't immediately articulate your information
+needs, you can perform a concept search and build on the results. 
+
+<P>
+<CENTER>READING THE HITLIST</CENTER><P>
+The most powerful weapon in the PLWeb Turbo arsenal is relevance ranking. Simply put, relevance ranking arranges
+a set of retrieved records so that those most likely to be relevant to your request are shown to you first. 
+<P>
+What determines the likelihood of relevance? <BR>
+    <BLOCKQUOTE>  Breadth of Match. The more distinct query terms that appear in a document, the higher the weight of
+      relevance. <BR>
+      Inverse Document Frequency. Rare terms (within the entire database) receive a higher weight of relevance. <BR>
+      Frequency. The number of times a query term occurs in a document. 
+      Density. The comparable length of retrieved documents. </BLOCKQUOTE>
+<P>
+Consideration of these combined criteria produces intelligent on-the-fly evaluation of a record's likelihood of
+satisfying the intent behind your query. <P>
+ If the scores show a sharp decline in relevance at any point, you probably would not want to look at records beyond the drop-off;
+the less relevant records might contain relatively few hits. 
+<P>
+If the slope of the scores is mostly level, it signals only a small distinction in relevance between retrieved records. In
+this case, you may want to refine your search query. 
+<P>
+<CENTER>USING ADVISORS</CENTER>
+<P>
+
+PLWeb Turbo features tools called advisors, which serve as online assistants. As part of the feedback searching
+process, you can use the advisors to gain added insight into the nature of a database's contents. In addition, you can use
+advisor results to refine your current query. 
+<P>
+<A HREF = "relatedwords.html">Related Words</A> can suggest appropriate search terms that you might never have considered. It produces a list of
+words that, in the context of the database, are related to the words in your current query. 
+<P>
+<A HREF = "dictionary.html">The Dictionary Advisor</A> can verify the existence of a query word and/or its variants within a database. With this
+advisor, you can decide if a word might yield good results, or if it should be excluded.   Note: The Dictionary Advisor will act on the first word in a multi-word query.
+<P>
+<A HREF = "spelling.html">The Fuzzy Match Advisor</a> scans the database for words with spelling similar to that of a query term. It can identify
+correct spelling--if you're in doubt about yours--and instances where scanned material has been incorrectly interpreted
+during OCR (optical character recognition) processing.
+<P> 
+<CENTER>SEARCH OPERATORS</CENTER><P>
+
+
+Of course, there are times when you will need the narrow focus and precision that a Boolean query provides. For this
+reason, PLWeb Turbo fully supports Boolean searching. 
+<P>
+Following is a list of the PLWeb search operators and brief descriptions of 
+how they will help you build a search.  For a more in-depth discussion of 
+effective methods of searching with PLWeb, see the
+<A HREF="/plweb/info/help/oltoc.html">online help</a>.
+
+<dl>
+<dt>AND
+<dd> Boolean AND logic operator.  Searches for records containing both of 
+the words it separates.
+<dt>OR
+<dd>Boolean OR logic operator.  Searches for records containing either of 
+the words it separates.
+<dt>NOT
+<dd> Boolean NOT logic operator.  Searches for records containing the query 
+word preceding it without containing the word following it.
+<dt>NEAR
+<dd>NEAR operator.  Functions as bi-directional proximity operator if word 
+range  (e.g. <i> deficit near/3 spending</i>) is specified.  If no word 
+range is specified, functions as bi-directional adjacency operator.
+<dt> ADJ
+<dd>Adjacency operator.  Searches for records in which the query word that 
+follows it appears immediately after the word preceding it.
+<dt> W/n
+<dd>Proximity operator. Searches for word pairs in which the pair's second 
+term
+occurs within a specified number of words after the first. Example: 
+<I>amphibian W/5 DNA </i>  finds records in which <I> DNA</i>  occurs withinfive words after <I> amphibian</i>.
+<dt> ?
+<dd> Wildcard operator for a single character; matches any one character.
+<dt> *
+<dd>Wildcard operator for strings; matches any string.
+ Examples: <I> micro*</i>  matches <I>microscope, microcomputer; *late  </i> 
+matches <I>relate, translate. </i>
+<dt> +
+<dd>Stemming operator; forces a word stem (if search stemming is off).
+Example: <I> run+</i>  finds <I> run, runs, </i>  and <I> running</i>.
+<dt>#
+<dd>Exact match operator; forces an exact word match (if search stemming is 
+on).
+Example: <I> run#</i>  finds <I>run</i>, but not <I>runs </i>  or 
+<I>running</i>.
+<dt> @
+<dd> Thesaurus operator; replaces the word before the operator with its 
+synonyms from the thesaurus.  Example: <I> satellite@</i>  is replaced by 
+synonyms listed for <I>satellite</i>  in the thesaurus.
+<dt>!
+<dd>Concept operator; automatically generates a list of words related to the 
+word before the operator; searches for, retrieves, and ranks all records 
+containing those related words; hit words are highlighted.</dt>
+<P>
+<A NAME="Field Restriction"><DT><STRONG>Field-Restricted 
+Searches</STRONG></A>
+<P>
+<dt>:field
+<dd>Field restriction operator for a single word in the query; specifiesthat the word before the colon is to be searched only against field.
+Example: <I> smith:author</i>  specifies that the author field is to be 
+searched for the query word <I>smith</i>.
+<dt> /F:
+<dd> field1, field2...Field restriction operator for the entire query; 
+specifies that the entire query is to be searched against fields.
+Example: <I>kirk douglas/F:text, author, title</i> specifies that <I>kirk 
+</i> and/or <I> douglas</i>  need to be in either the <I>text, author, 
+</i>or the <I> title</i>  field for the record to be retrieved.
+<dt> field=num
+<dd>Numeric match operator; specifies that field must exactly match num, 
+where num is a non-negative number.  Example: <I>year=1982 </i>  requires 
+the contents of the <I>year </i>  field to contain <I> 1982</i>.
+</dl>
+<HR>
+<CENTER>For more detailed help with the <A HREF="http://www.pls.com/plweb/info/help/oltoc.html">PLS search engine</A>, have a look at thier site
+</CENTER>
+</BODY>
+</HtML>

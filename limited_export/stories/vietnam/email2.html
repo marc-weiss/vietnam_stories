@@ -1,0 +1,122 @@
+<html> 
+<head>
+<script language="JavaScript" src="js/films.js"></script>
+<script language="JavaScript">
+<!--
+
+function errpop_q() {
+alert ('Please enter your story')
+}
+
+function errpop_e() {
+alert ('Please enter a valid e-mail address')
+}
+
+
+function validateForm( f ){
+	// a reference to the form
+	//f = document.askff;
+	// store field vars for convenience
+	q_val = f.question.value;
+	e_val = f.email.value;
+	
+	// ensure something was entered into the question field
+	if( q_val.length < 1 ){
+		f.question.focus();
+		errpop_q();
+		return false;
+	}
+	if( e_val.length > 0 ){
+	if( e_val.indexOf("@") == -1
+		|| e_val.indexOf(".")==-1 ){
+		f.email.focus();
+		errpop_e();
+		return false;
+	}
+	}
+	
+	return true;
+}
+
+//-->
+</script>
+
+<link rel="stylesheet" type="text/css" href="css/screen.css">
+<link rel="stylesheet" type="text/css" href="css/forms.css"  media="all"> 
+
+<title>PBS - P.O.V. | Re: Rietnam Stories SInce the War</title></head><body bgcolor="#000000" text="#EEEEEE" vlink = "#99cccc" link = "#99ccff" 
+topmargin=0
+leftmargin=0 >
+
+<TABLE border = "0" CELLSPACING="0" CELLPADDING="0">
+<TR><TD valign = top align = left width = 40 height = 310><A HREF = "about.html"
+target = "_top"><IMG  width = 40 height = 62 border = 0 SRC = "images/athissite.gif"
+alt = "about this site"></A><A HREF = "contrib.html" target = "_top"><IMG width = 40
+height = 62 border = 0 SRC = "images/acontributeb.gif" alt = "contribute your
+story"></A><A href = "story.html" target = "_top"><IMG width = 40 height = 62 border
+=
+0 SRC = "images/astories.gif" alt = "selected stories"></a><A Href = "search.html"
+target = "_top"><IMG width = 40 height = 62 border = 0 SRC = "images/asearch.gif" alt
+= "search" target = "_top"></a><A href =
+"http://www.pbs.org/cgi-bin/pov/response.cgi/discuss/" target = "_top"><IMG width =
+40
+height = 62 border = 0 SRC = "images/adiscuss.gif" alt = "dialog"></a></TD>
+<TD valign = top align = center width = 330>
+
+<TABLE cellpadding  = 0 border = 0 cellspacing = 0>
+<TR>
+<TD width = 320 align = left valign = top>
+<FONT SIZE = "-1">Click here if you want to send an <A HREF = "upload_photo.html"
+target = "_self">image</A>.
+</FONT>
+<form ACTION="/cgi-registry/postmaster.pl" method="post" onsubmit="return validateForm(this)">
+<INPUT TYPE="hidden" NAME="location" VALUE="/pov/stories/vietnam/thanks.html">
+  <input type="hidden" name="address" value="webresponse@pov.org">
+                      <input type="hidden" name="subject" value="Re: Vietnam - Story Submission">
+                      <input type="hidden" name="content" value="Re: Vietnam - Storis since the war - Submission">
+<INPUT TYPE="hidden" NAME="format" VALUE="text">
+<!-- UPLOADING TEXT -->
+<IMG  SRC = "images/cname.gif" alt="Name" border = 0>
+<IMG valign = top width = 90 height = 1 SRC = "images/black.gif">
+<IMG SRC = "images/cyear.gif" alt="Age" border = 0>
+<BR>
+<!-- ***NAME -->
+<INPUT TYPE="text" NAME="name" SIZE="20">
+<IMG valign = top width = 4 height = 1 SRC = "images/black.gif">
+<!-- ***DOB* -->
+<INPUT TYPE="text" NAME="year" VALUE="" SIZE="4" maxlength="4" >
+<BR>
+<IMG SRC = "images/ccitystate.gif" alt="State">
+<IMG width = 12 height = 1 SRC = "images/black.gif">
+<IMG SRC = "images/cemail.gif" alt="Email">
+<BR>
+<!-- **CITYSTATE* -->
+<INPUT NAME="writingfrom" TYPE="text" id="writingfrom" SIZE="20">
+<IMG valign = top width = 4 height = 1 SRC = "images/black.gif">
+<!-- ***EMAIL**** -->
+<INPUT NAME="email" TYPE="text" SIZE="20" maxlength="50">
+<BR>
+<IMG SRC = "images/cyourstory.gif" alt="Story">
+<BR>
+<!-- ***STORY**** -->
+<textarea name="question" class="inputtxt" cols="40" rows="12"></textarea>
+<BR>
+<IMG SRC = "images/ckeywords.gif" alt="Keywords">
+<!-- *KEYWORDS* -->
+<INPUT TYPE="text" NAME="keywords" SIZE="43">
+<BR>
+<!--**SEND***-->
+<IMG width = 15 height = 1 SRC = "images/black.gif">
+<input type="image" name="send"  border = 0  src = "images/send.gif">
+<IMG width = 10 height = 1 SRC = "images/black.gif">
+<!--**RESET***-->
+<A HreF = "emailtop.html"><img  border = 0  src = "images/creset.gif"></A>
+</form>
+
+<P>
+</TD>
+</TR>
+</TABLE>
+</TABLE>
+</body>
+</html>

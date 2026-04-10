@@ -1,0 +1,13 @@
+{
+  "site_title": "Vietnam Stories Draft",
+  "site_subtitle": "Draft static archive for local review",
+  "included_forums": [
+    "discuss",
+    "discuss2"
+  ],
+  "enable_original_order_view": false,
+  "email_redaction_mode": "none",
+  "preview_word_limit": 120,
+  "output_topic_page": true,
+  "topic_curation_path": "draft_topic_curation.json"
+}

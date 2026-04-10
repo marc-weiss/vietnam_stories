@@ -1,0 +1,47 @@
+<html>
+
+
+<head>
+<META NAME="homepage" CONTENT="Re: Vietnam -- Stories Since the War">
+<META Name="keywords" Content="Vietnam, Stories, Since the War, Archive, Search Engine, Discussion about the Vietnam War, Vietnam Veterans Memorial Wall, Point of View, PBS Online, POV, Personal Stories">
+   
+<META Name="description" Content="Introduction to RE: Vietnam -- Stories Since the War.  This site is a place to share stories about how the Vietnam War era has affected your sense of self and your place in the world.">
+     
+<title>Re: Vietnam -- Stories Since the War</title></head>
+ <body bgcolor="#769593" text="#000000" link="#EEEEEE" vlink="#000000" topmargin=0 leftmargin=0>
+
+<center><!--#include virtual="/includes/global.html" --></center>
+
+
+<CENTER>
+
+<a href="index.map"><IMG valign = top  border = 0 SRC = "vietnam/images/openerX.jpg" ismap
+usemap="#map" alt = "Re: Vietnam -- Stories Since the War"></a>
+
+<map name="map">
+
+<AREA SHAPE="rect" COORDS="9,11,219,52"  HREF="vietnam/story.html">
+<AREA SHAPE="rect" COORDS="323,114,485,215"  HREF="vietnam/story.html">
+<AREA SHAPE="rect" COORDS="378,2,465,47"   HREF="http://www.pbs.org">
+<AREA SHAPE="rect" COORDS="472,2,555,47"   HREF="http://www.pbs.org/pov">
+<AREA SHAPE="rect" COORDS="71,242,151,265"   HREF="vietnam/about.html">
+<AREA SHAPE="rect" COORDS="154,242,265,265"   HREF="vietnam/contrib.html">
+<AREA SHAPE="rect" COORDS="268,242,350,265"  HREF="vietnam/story.html">
+<AREA SHAPE="rect" COORDS="353,242,428,265"  HREF="vietnam/search.html">
+<AREA SHAPE="rect" COORDS="431,242,503,265"  HREF="http://www.pbs.org/cgi-bin/pov/response.cgi/discuss">
+<AREA SHAPE="rect" COORDS="199,267,381,286"  HREF="http://home.netscape.com">
+</map>
+</center>
+<BR>
+<CENTER>
+<A HREF="vietnam/about.html">Info About This Site </A> | <A HREF="vietnam/contrib.html">Contribute Your Story</A> |  
+<A HREF = "vietnam/story.html">Selected Stories</A> | <A HREF="vietnam/search.html">Search the Collection</A> |
+<A HREF="http://www.pbs.org/cgi-bin/pov/response.cgi/discuss">Dialog</A>
+<BR></CENTER>
+<P>
+</body>
+
+</html>
+
+
+

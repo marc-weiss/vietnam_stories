@@ -1,0 +1,234 @@
+[
+  {
+    "slug": "website-commentary",
+    "title": "Commentary On The Website",
+    "summary": "Posts that discuss the website itself as a project, forum, reading experience, or public space for exchange. This topic is intended as a durable editorial topic rather than a generated one.",
+    "durable": true,
+    "subtopics": [
+      {
+        "slug": "praise-and-encouragement",
+        "title": "Praise, Gratitude, And Encouragement",
+        "summary": "Expressions of thanks, appreciation, praise, and encouragement directed at the site and its creators.",
+        "keywords": ["this site", "your site", "wonderful site", "great site", "thanks for the site", "thank you for this site", "keep up the work", "appreciate this site"]
+      },
+      {
+        "slug": "design-and-usability",
+        "title": "Design, Navigation, And Usability Feedback",
+        "summary": "Comments about the design, layout, readability, navigation, and usability of the website itself.",
+        "keywords": ["website", "web site", "site design", "layout", "design", "easy to use", "navigate", "page", "pages"]
+      },
+      {
+        "slug": "content-and-participation",
+        "title": "Content Requests And Participation",
+        "summary": "Requests for more material, invitations to contribute, and comments about who should participate or what the site should include.",
+        "keywords": ["contribute", "contribution", "submit", "send your story", "more stories", "should include", "participants", "forum"]
+      },
+      {
+        "slug": "site-as-public-space",
+        "title": "The Site As Dialogue, Archive, And Healing Space",
+        "summary": "Posts that treat the site as a place for dialogue, remembrance, healing, or public conversation.",
+        "keywords": ["this forum", "this site helps", "continue this conversation", "dialogue", "healing", "place to", "public conversation", "remember here"]
+      }
+    ]
+  },
+  {
+    "slug": "trauma-memory",
+    "title": "Trauma, Memory, And Aftermath",
+    "summary": "Posts about PTSD, difficult memory, grief, moral injury, and the lingering emotional effects of the war.",
+    "subtopics": [
+      {
+        "slug": "flashbacks-and-haunting",
+        "title": "Flashbacks, Haunting, And PTSD",
+        "summary": "Accounts of recurring memory, nightmares, haunting images, and PTSD-like aftereffects.",
+        "keywords": ["ptsd", "flashback", "flashbacks", "nightmare", "nightmares", "haunt", "haunted", "memories", "remember"]
+      },
+      {
+        "slug": "grief-and-mourning",
+        "title": "Grief, Loss, And Mourning",
+        "summary": "Posts about loss, mourning, the dead, remembrance, and attempts to heal.",
+        "keywords": ["grief", "mourning", "mourn", "loss", "lost", "death", "dead", "healing", "heal"]
+      },
+      {
+        "slug": "survival-and-scars",
+        "title": "Survival, Wounds, And Lasting Scars",
+        "summary": "Reflections on survival, emotional wounds, guilt, shame, and the damage that lingered after the war.",
+        "keywords": ["wound", "wounds", "wounded", "scar", "scars", "survive", "survival", "guilt", "shame"]
+      }
+    ]
+  },
+  {
+    "slug": "the-wall",
+    "title": "The Wall And Public Remembrance",
+    "summary": "Discussion centered on the Vietnam Veterans Memorial, visits to the Wall, remembrance, and the meaning of public mourning.",
+    "subtopics": [
+      {
+        "slug": "visits-to-the-wall",
+        "title": "Visits To The Wall",
+        "summary": "Personal accounts of going to the memorial, standing before it, and reacting in the moment.",
+        "keywords": ["the wall", "went to the wall", "visiting the wall", "memorial", "washington"]
+      },
+      {
+        "slug": "names-and-remembrance",
+        "title": "Names, Remembrance, And Honor",
+        "summary": "Posts focused on names on the memorial, remembrance, honor, and public mourning.",
+        "keywords": ["names", "remember", "remembrance", "honor", "honour", "memorial"]
+      },
+      {
+        "slug": "maya-lin-and-memory",
+        "title": "Maya Lin, Design, And Public Memory",
+        "summary": "Discussion of Maya Lin, the memorial design, and what public memorials mean.",
+        "keywords": ["maya lin", "design", "memorial", "monument", "wall"]
+      }
+    ]
+  },
+  {
+    "slug": "homecoming",
+    "title": "Homecoming And Reintegration",
+    "summary": "Accounts of returning home, social rejection, family strain, and the challenge of re-entering civilian life.",
+    "subtopics": [
+      {
+        "slug": "return-and-reentry",
+        "title": "Return, Reentry, And Civilian Life",
+        "summary": "Stories about coming home, reentry, and adjusting to civilian life after service.",
+        "keywords": ["homecoming", "came home", "coming home", "returned", "back home", "civilian"]
+      },
+      {
+        "slug": "rejection-and-alienation",
+        "title": "Rejection, Anger, And Alienation",
+        "summary": "Posts about rejection, hostility, alienation, and feeling unwelcome after returning.",
+        "keywords": ["rejection", "alienation", "spat", "airport", "ignored", "anger"]
+      },
+      {
+        "slug": "family-after-return",
+        "title": "Family Strain After Return",
+        "summary": "Accounts of how return from Vietnam shaped marriages, households, and family relationships.",
+        "keywords": ["family", "wife", "wives", "children", "marriage", "husband", "home"]
+      }
+    ]
+  },
+  {
+    "slug": "protest-politics",
+    "title": "Protest, Politics, And The Meaning Of Opposition",
+    "summary": "Arguments and reflections on protest, anti-war politics, patriotism, and disagreement about the war’s justification.",
+    "subtopics": [
+      {
+        "slug": "antiwar-activism",
+        "title": "Anti-War Activism And Protest",
+        "summary": "Discussion of demonstrations, anti-war organizing, protest culture, and public opposition.",
+        "keywords": ["protest", "anti-war", "activist", "activism", "march", "demonstration"]
+      },
+      {
+        "slug": "patriotism-and-betrayal",
+        "title": "Patriotism, Loyalty, And Betrayal",
+        "summary": "Arguments about patriotism, support, betrayal, and what counted as loyalty during and after the war.",
+        "keywords": ["patriot", "patriotism", "betray", "betrayal", "traitor", "support"]
+      },
+      {
+        "slug": "policy-and-blame",
+        "title": "Politics, Policy, And Blame",
+        "summary": "Posts about government decisions, political responsibility, hawks, doves, and the meaning of opposition.",
+        "keywords": ["politics", "government", "president", "congress", "hawk", "dove", "draft"]
+      }
+    ]
+  },
+  {
+    "slug": "service-and-duty",
+    "title": "Service, Duty, And Conscience",
+    "summary": "Questions of enlistment, obligation, draft resistance, voluntarism, and moral conflict around service.",
+    "subtopics": [
+      {
+        "slug": "draft-and-obligation",
+        "title": "Draft, Obligation, And Service",
+        "summary": "Discussion of the draft, obligation, deferment, and being called to serve.",
+        "keywords": ["draft", "drafted", "deferment", "obligation", "duty", "serve"]
+      },
+      {
+        "slug": "volunteering-and-choice",
+        "title": "Volunteering, Enlistment, And Choice",
+        "summary": "Posts about volunteering, enlistment, and the meaning of choosing to serve.",
+        "keywords": ["volunteer", "volunteered", "enlist", "enlistment", "joined", "service"]
+      },
+      {
+        "slug": "conscience-and-refusal",
+        "title": "Conscience, Refusal, And Resistance",
+        "summary": "Accounts of refusal, conscientious objection, and moral conflict over whether to go.",
+        "keywords": ["conscience", "conscientious", "refused", "resister", "wouldn't go", "did not go"]
+      }
+    ]
+  },
+  {
+    "slug": "medical-and-caregiving",
+    "title": "Medical Care, Nurses, And Caregiving",
+    "summary": "Posts about nurses, hospitals, wounds, medical treatment, caregiving, and the burden of tending to survivors.",
+    "subtopics": [
+      {
+        "slug": "nurses-and-corpsmen",
+        "title": "Nurses, Medics, And Corpsmen",
+        "summary": "Posts about nurses, medics, corpsmen, and medical personnel who cared for the wounded.",
+        "keywords": ["nurse", "nurses", "medic", "medics", "corpsman", "corpsmen"]
+      },
+      {
+        "slug": "hospitals-and-recovery",
+        "title": "Hospitals, Treatment, And Recovery",
+        "summary": "Discussion of hospitals, medical treatment, rehabilitation, and long recovery after injury.",
+        "keywords": ["hospital", "medical", "treatment", "recovery", "rehab", "walter reed"]
+      },
+      {
+        "slug": "caregiving-burden",
+        "title": "Caregiving And The Burden Of Care",
+        "summary": "Posts about long-term care, tending to survivors, and the emotional burden of caregiving.",
+        "keywords": ["care", "caregiving", "caretaking", "wounded", "survivor", "amputee"]
+      }
+    ]
+  },
+  {
+    "slug": "family-generations",
+    "title": "Family, Children, And Generational Effects",
+    "summary": "Stories about parents, spouses, children, and the ways Vietnam shaped later generations and family relationships.",
+    "subtopics": [
+      {
+        "slug": "spouses-and-marriage",
+        "title": "Spouses, Marriage, And Partnership",
+        "summary": "Posts about wives, husbands, marriage, and the strain placed on intimate relationships.",
+        "keywords": ["wife", "wives", "husband", "marriage", "spouse", "partner"]
+      },
+      {
+        "slug": "parents-and-children",
+        "title": "Parents, Children, And Household Life",
+        "summary": "Discussion of fathers, mothers, children, and family life shaped by war experience.",
+        "keywords": ["father", "dad", "mother", "son", "daughter", "child", "children"]
+      },
+      {
+        "slug": "inherited-memory",
+        "title": "Inherited Memory Across Generations",
+        "summary": "Posts about later generations, family legacy, and how Vietnam was passed forward in memory and story.",
+        "keywords": ["generation", "generations", "legacy", "younger", "later", "family"]
+      }
+    ]
+  },
+  {
+    "slug": "myth-reality",
+    "title": "Myth, Reality, And Historical Interpretation",
+    "summary": "Debates over what Vietnam meant, how it should be taught, and how public narratives simplify or distort experience.",
+    "subtopics": [
+      {
+        "slug": "teaching-and-history",
+        "title": "Teaching, Schools, And Historical Framing",
+        "summary": "Discussion of teaching Vietnam, historical framing, and what should be passed on to students.",
+        "keywords": ["history", "school", "schools", "teaching", "teach", "textbook"]
+      },
+      {
+        "slug": "media-and-representation",
+        "title": "Media, Books, Films, And Representation",
+        "summary": "Posts about how Vietnam has been represented in books, films, television, and other media.",
+        "keywords": ["movies", "movie", "books", "book", "media", "television", "stereotypes"]
+      },
+      {
+        "slug": "meaning-and-interpretation",
+        "title": "Meaning, Myth, And Interpretation",
+        "summary": "Arguments about myth versus reality and what Vietnam ultimately meant.",
+        "keywords": ["myth", "reality", "understand", "understanding", "meaning", "lesson"]
+      }
+    ]
+  }
+]

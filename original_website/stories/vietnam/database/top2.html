@@ -1,0 +1,44 @@
+<html>
+<title>Re: Vietnam (Search)</title>
+<BODY bgcolor="#000000" vlink="#99cccc" text="#eeeeee" link="#99ccff">
+
+<form method=POST action="http://www.pbs.org/cgi-bin/pov/vietnamsearch">
+<input type=hidden name=view value="vietnam">
+<input type=hidden name=dbnames value="vietnam:">
+<input type=hidden name=starthit value="0">
+<input type=hidden name=numresults value=100>
+
+Search in the database for:
+<BLOCKQUOTE>
+<input type=checkbox name="query" value="text:format"> Text<BR>
+<input type=checkbox name="query" value="image:format"> Image<BR>
+<input type=checkbox name="query" value="audio:format"> Audio<BR>
+</BLOCKQUOTE>
+
+<select name=query1b size=1>
+  <option value="">Everything</option>
+  <option value=":format">Format</option>
+  <option value=":date">Date</option>
+  <option value=":story">Story</option>
+  <option value=":name">Name</option>
+  <option value=":year">Year</option>
+  <option value=":state">State</option>
+  <option value=":email">Email</option>
+  <option value=":keywords">Keywords</option>
+</select>
+<P>
+
+Then describe what you are looking for and click on the "search" button.
+<br>
+<input type=text name=query1a size=40 value="">
+<P>
+
+<input type=submit name=simplesearch value="Search">
+<input type=submit name=concept value="Concept">
+<input type=submit name=relate value="Relate">
+<P>
+
+<hr>
+
+</form>
+<P>

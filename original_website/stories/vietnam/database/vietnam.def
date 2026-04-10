@@ -1,0 +1,31 @@
+
+<!--Where D = display in Records-->
+<!--Where T = List in Hitlist Summary-->
+<!--Where S = Search by defauly-->
+<!--Where N = no search-->
+
+
+
+PLWeb/Default	(DST)
+
+format	(DST)
+	
+date	(DS)
+
+story (DST)	
+
+name (DST)		
+
+year (DS)		
+
+state (DS)		
+
+email (DS)
+
+keywords (DS)	
+
+DefStatement
+<!--optional statement here for thsaurus and such-->
+# Comment 
+
+

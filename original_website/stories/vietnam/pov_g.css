@@ -1,0 +1,13 @@
+/*GENERAL*/
+a {color: 99CCCC; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: bold; text-align: left}
+
+/*SEARCH CSS*/
+.result {}
+.result-title {font-size: 10px;}
+.result-set {color: E9EAEA; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: bold; text-align: left}
+.results-head {color: FFFFFF; background-color: 99CCCC; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: bold;}
+.results-nav {color: FFFFFF; background-color: 99CCCC; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: bold;}
+.result-number {color: E9EAEA; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: normal;}
+.result-abstract {color: E9EAEA; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: normal;}
+.keymatch-header {color: FFFFFF; background-color: 99CCCC; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: bold;}
+.keymatch {color: E9EAEA; font-family: verdana, arial, helvetica, sans-serif; font-size: 10px; font-weight: normal; text-algin: left}

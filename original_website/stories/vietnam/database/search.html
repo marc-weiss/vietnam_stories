@@ -1,0 +1,153 @@
+
+<html>
+
+<TITLE>Re: Vietnam | Search the Story Archive</TITLE>
+ <body bgcolor="#000000" text="#EEEEEE" vlink = "#99cccc" link = "#99ccff" 
+topmargin=0 leftmargin=0 >
+
+<TABLE border = "0" CELLSPACING="0" CELLPADDING="0">
+<!--***********TOOLBAR********-->
+<TR><TD valign = top align = left width = 32 height = 310><A Href = "pov/stories/vietnam/about.html"
+TARGET="_top" ><IMG width = 32 height = 78 border = 0 SRC =
+"pov/stories/vietnam/images/thissite.gif" alt = "About this site"></a><A Href = "pov/stories/vietnam/contrib.html"
+TARGET="_top" ><IMG width = 32 height = 90 border = 0 SRC =
+"pov/stories/vietnam/images/contribute.gif" alt = "contribute"></A><A href = "pov/stories/vietnam/story.html" TARGET="_top" 
+><IMG width = 32
+height = 68 border = 0 SRC = "pov/stories/vietnam/images/stories.gif" alt = "stories"></a><A HREF =
+"http://www.pbs.org/cgi-bin/pov/response.cgi/discuss"><IMG width = 32 height = 74 border = 0 SRC =
+"pov/stories/vietnam/images/discuss.gif" alt = "discuss"></a></TD>
+<TD valign = top width = 540>
+<!--***********TOOLBAR********-->
+
+
+<TABLE cellpadding =5 cellspacing =0 border = 0>
+<TR><TD colspan = 3 valign = top align = left width = 546>
+<CENTER><IMG valign = center align= center SRC = "pov/stories/vietnam/images/title.gif" alt = "Re: Vietnam"></CENTER><P>
+</TD></TR>
+<TR><TD width = 560 colspan =3>
+<P>
+
+<!--***********SEARCH SETUP********-->
+<form method=POST action="http:fastweb?search">
+<input type = hidden name = db0 value = "dbstory">
+<input type = hidden name=view value={$VIEWNAME}>
+<input type = hidden name = operation value = simplesearch>
+<input type = hidden name = numresults value = 25>
+<!--<input type = hidden name = db{$DBID} value = "{$DBNAME}">{$DBNAME};{$DBLIST_END}-->
+<!--***********SEARCH SETUP********-->
+
+<!--***********SEARCH QUERY********-->
+<IMG valign = top SRC = "pov/stories/vietnam/images/searchdescribe.gif" alt = "Describe Search"><br>
+<input type=text {$QUERY1} name=query size=75 rows = 3 align = left value="{$QUERY1}">
+</TD></TR>
+<TR><TD width = 546 colspan =3 valign = top height = 40>
+<INPUT type = "radio" {$NRCHECKED} NAME=operation TYPE= value= concept><IMG border = 0 valign = top  SRC =
+"pov/stories/vietnam/images/conceptsearch.gif" alt = "Concept Search"><img border = 0 valign = center  src =
+"pov/stories/vietnam/images/or.gif" alt = "OR"><IMG width = 30 height = 1 SRC = "pov/stories/vietnam/images/black"><input 
+type = "radio" NAME=operation TYPE= value= simplesearch><IMG border = 0 valign = bottom src =
+"pov/stories/vietnam/images/wordsearch.gif" alt = "Word Search">
+<BR><FONT SIZE = -1>
+<IMG width = 17 height = 1 SRC = "pov/stories/vietnam/images/black">Searches for related ideas<IMG width = 203 height = 1 SRC
+= "pov/stories/vietnam/images/black">Finds instances of specific words.</FONT>
+<center><HR></CENTER>
+</TD></TR>
+<!--***********SEARCH QUERY********-->
+
+<!--***********SEARCH OPERATORS********-->
+<TR>
+<TD width = 260 valign = top>
+<TABLE cellpadding =0 cellspacing =5 border = 0>
+<TD width = 120 valign = top>
+<IMG SRC = "pov/stories/vietnam/images/searchhelp.gif" alt = "Search Help"><br>
+<A HREF = "pov/stories/vietnam/suggestedsearch.html">Suggested Searches</A><BR>
+<A HREF = "pov/stories/vietnam/searchtips.html">Searching Tips</A><BR>
+<A HREF = "pov/stories/vietnam/relate.tmpl">Add Related words</A><BR>
+<A HREF = "pov/stories/vietnam/dictionary.tmpl">Check Spelling</A><BR>
+<A HREF = "pov/stories/vietnam/fuzzy.tmpl">Database Dictionary </A><BR>
+</TD></TR></TABLE></TD>
+<!--***********SEARCH OPERATORS********-->
+
+
+<!--***********DATE PARAMETERS********-->
+
+<TD width = 184 height = 50 valign = top align = left>
+<IMG SRC = "pov/stories/vietnam/images/searchsince.gif"><BR>
+
+<IMG  width = 5 height = 1 SRC = "pov/stories/vietnam/images/black.gif"><input type=text size=8 name = query_rule value =
+"($QUERY2)">
+<!--**i.e. search for instances since this date**--></TD>
+<!--***********DATE PARAMETERS********-->
+
+<!--***********FORMAT TYPES********-->
+<TD width = 280 valign = top align = left ><IMG SRC = "pov/stories/vietnam/images/searchformat.gif" alt = "Search Format">
+<dd><INPUT TYPE="checkbox" NAME="text0" VALUE="($QUERY3)">text 
+<dd><INPUT TYPE="checkbox" NAME="images1" VALUE="($QUERY4)">images 
+<dd><INPUT TYPE="checkbox" NAME="audio2" VALUE="($QUERY5)">audio<FONT SIZE = -1>*</A>
+<dd><INPUT TYPE="checkbox" NAME="all3" VALUE="($QUERY6)">all formats<P>
+<DD><FONT SIZE = -1> *<A HREF="http://www.realaudio.com"> Download Real Audio</FONT></A>
+</TD></TR>
+<!--***********FORMAT TYPES********-->
+
+<!--***********SUBMIT SEARCH and RESET********-->
+<TR><TD width = 556 colspan = 3 valign = bottom height = 40 ><P>
+<CENTER><input type="image" name="search"  value = "(($QUERY1)) [ AND [.gt#date($QUERY2)] AND {$QUERIES 3-6....??}]]" border
+= 1 
+src = "pov/stories/vietnam/images/submitsearch.gif" alt = "search"><IMG width = 5 height = 1 SRC =
+"pov/stories/vietnam/images/black.gif"><input type="image" name="search" value = reset border = 1  src =
+"pov/stories/vietnam/images/resetsearch.gif" alt = "reset search"></A></CENTER>
+<P>
+</FORM>
+</TD></TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<!--***********SUBMIT SEARCH and RESET********-->
+
+
+
+<!--***********QUERY RESULTS HERE********-->
+<!--***********CGI SCRIPT HERE TO SHOW HITLIST OF RESULTS********-->
+
+
+<TABLE cellpadding = 0 cellspacing = 8 border = 0>
+<TR><TD width = 578 align = left colspan = 3>
+<HR>
+<P>
+
+<center>{$ITEMSFOUND} results found (25 returned) from query: <i>{$Query}</i></center>
+<P>
+<HR>
+<P>
+</TD></TR>
+{$HITLIST}
+<tr align=left>
+<td><b>Score</b></td>
+<td><b>Description/Format</b><br></td>
+<td><b>Author</b></td></tr>
+<hr>
+
+
+<tr align=left>
+<td><b>{$NSCORE:3}</b></td>
+<td><b>{$TITLE:2,story}{$LINK}{$format}{$EOL}</b></td>
+<td><b>{$name}</b></td></tr>
+
+
+<TR><TD colspan = 3 width = 578>{$QUERYBYEXAMPLE:20}Search Similar Documents{$EOL}<P>
+{$HITLIST_END}
+<CENTER>
+{$PREVLIST}Previous 25 Results for query:<B>{$Query}</B>.{$EOL}<P>
+{$NEXTLIST}Next 25 Results for query:<B>{$Query}</B>.{$EOL}<P><BR><P>
+{$SEARCHFORM}Return to Search{$EOL}</CENTER></TD></TR>
+</TABLE>
+
+
+<!--***********QUERY RESULTS HERE********-->
+
+
+
+</body>
+
+</html>
+
+
