@@ -2259,7 +2259,7 @@ def render_topics_page(config: dict, matched: list[dict]) -> str:
         config=config,
         page_title="Theme Explorer",
         eyebrow="Explore Archive",
-        lede="This view organizes our online community around recurring themes, making it easier to move across threads by subject rather than chronology while still staying grounded in the original conversations.",
+        lede="The themes and topics gathered here combine generative AI analysis of the archive with historical framing to create a meaning map of community participation. Individual messages are enriched with summaries, mentions of notable people and organizations, and links to related themes, not to rewrite what participants said, but to provide interpretive scaffolding and navigation so readers can explore the archive according to their interests.",
         current_primary="theme",
         index_href="active_threads.html",
         original_href="index_original.html",
