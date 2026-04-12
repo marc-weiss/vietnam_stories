@@ -4,21 +4,32 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import html
 import json
 import re
 import signal
+import socket
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
+from urllib import error, request
 
 
 POST_DATE_FORMAT = "%a %b %d %H:%M:%S %Z %Y"
 EMAIL_REGEX = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 TOKEN_REGEX = re.compile(r"[A-Za-z0-9']+")
 SENTENCE_SPLIT_REGEX = re.compile(r"(?<=[.!?])\s+|\n{2,}")
+DIRECT_ADDRESS_REGEX = re.compile(r'^\s*"?([A-Z][A-Za-z0-9"\'&.-]*(?:\s+[A-Z][A-Za-z0-9"\'&.-]*){0,3})\s*,')
+CAPITALIZED_SEQUENCE_REGEX = re.compile(
+    r"\b(?:[A-Z][A-Za-z0-9'&.-]*|[A-Z]{2,})(?:\s+(?:[A-Z][A-Za-z0-9'&.-]*|[A-Z]{2,}|of|the|and|for|to)){0,4}\b"
+)
+QUOTED_TITLE_REGEX = re.compile(r'"([^"\n]{3,80})"')
+ACRONYM_REGEX = re.compile(r"\b[A-Z]{2,6}\b")
+WORLD_WAR_REGEX = re.compile(r"\b(?:World\s+War\s+[IVX0-9]+|Vietnam\s+War|Korean\s+War)\b", re.IGNORECASE)
+HONORIFIC_PREFIX_REGEX = re.compile(r"^(Dr|Mr|Mrs|Ms|Rev|Gen|General|Capt|Captain|Lt|Colonel|Col|Sgt|Sergeant)\.?\s+", re.IGNORECASE)
 STOPWORDS = {
     "a",
     "about",
@@ -133,6 +144,149 @@ STOPWORDS = {
     "you",
     "your",
 }
+MENTION_SINGLE_WORD_BLOCKLIST = {
+    "A",
+    "An",
+    "And",
+    "April",
+    "Are",
+    "As",
+    "August",
+    "But",
+    "Comments",
+    "Correction",
+    "December",
+    "February",
+    "For",
+    "Friday",
+    "From",
+    "Hello",
+    "He",
+    "I",
+    "January",
+    "July",
+    "June",
+    "March",
+    "May",
+    "Monday",
+    "My",
+    "November",
+    "October",
+    "Others",
+    "PBS",
+    "Please",
+    "POV",
+    "PTSD",
+    "Question",
+    "Response",
+    "Saturday",
+    "September",
+    "She",
+    "Sunday",
+    "Thanks",
+    "The",
+    "Then",
+    "There",
+    "Thursday",
+    "Tuesday",
+    "Vietnam",
+    "Wednesday",
+    "What",
+    "When",
+    "Where",
+    "Why",
+    "You",
+}
+MENTION_CONNECTORS = {"of", "the", "and", "for", "to"}
+ENTITY_HINT_WORDS = {
+    "Army",
+    "Battalion",
+    "Book",
+    "Books",
+    "Brigade",
+    "Cavalry",
+    "CNN",
+    "Company",
+    "Corps",
+    "Division",
+    "Film",
+    "Infantry",
+    "Marines",
+    "Marine",
+    "Movie",
+    "Navy",
+    "PBS",
+    "Platoon",
+    "POV",
+    "Regiment",
+    "Show",
+    "States",
+    "Union",
+    "War",
+}
+GENERIC_ENTITY_WORDS = {
+    "american",
+    "christian",
+    "family",
+    "freedom",
+    "government",
+    "life",
+    "nam",
+    "north",
+    "organization",
+    "republic",
+    "site",
+    "soldier",
+    "soldiers",
+    "south",
+    "states",
+    "veteran",
+    "veterans",
+    "vet",
+    "vets",
+    "viet",
+    "vietnam",
+    "vietnamese",
+}
+GENERIC_MENTION_PHRASES = {
+    "american soldier",
+    "american soldiers",
+    "christian organization",
+    "south vietnamese",
+    "viet nam vet",
+    "viet nam vets",
+    "vietnam veterans",
+}
+ALLOWED_ACRONYM_MENTIONS = {
+    "ABC",
+    "ARVN",
+    "CBS",
+    "CIA",
+    "CNN",
+    "MIA",
+    "NBC",
+    "NVA",
+    "PBS",
+    "POV",
+    "POW",
+    "USAF",
+    "USMC",
+    "VA",
+    "VC",
+}
+MENTION_REVIEW_PROMPT = """You review candidate entity mentions from a Vietnam War discussion post.
+
+Return JSON only in the form {"mentions":["..."]}.
+
+Rules:
+- Keep only distinct, widely known real-world entities explicitly referenced in the text.
+- Allowed categories: public figures, organizations, military units, wars, historical events, TV shows, films, books.
+- Use the common canonical name in mixed case unless the entity is normally written as an acronym.
+- Collapse duplicate variants into one canonical mention.
+- Exclude forum participants, usernames, vague groups, generic concepts, diagnoses, abstractions, and uncertain items.
+- If confidence is not high, omit the item.
+- If nothing qualifies, return {"mentions":[]}.
+"""
 
 
 @dataclass
@@ -163,6 +317,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--csv-input", type=Path, help="Structured CSV input matching threads.csv export")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory to write the static site into")
     parser.add_argument("--emit-csv", type=Path, help="Optional path to emit normalized CSV")
+    parser.add_argument("--emit-mentions-audit", type=Path, help="Optional path to emit mentions review audit CSV")
     parser.add_argument("--config", type=Path, default=Path("draft_site_config.json"))
     return parser.parse_args()
 
@@ -277,6 +432,328 @@ def with_author_name(summary: str, name: str) -> str:
     return f"{author} {summary}"
 
 
+def reply_clause(summary: str) -> str:
+    replacements = [
+        ("argues that", "arguing that"),
+        ("defends", "defending"),
+        ("offers", "offering"),
+        ("pushes back against", "pushing back against"),
+        ("describes", "describing"),
+        ("reflects on", "reflecting on"),
+        ("looks for", "looking for"),
+        ("debates", "debating"),
+        ("connects", "connecting"),
+        ("comments on", "commenting on"),
+        ("raises", "raising"),
+        ("discusses", "discussing"),
+    ]
+    for source, replacement in replacements:
+        if summary.startswith(source):
+            return summary.replace(source, replacement, 1)
+    return summary
+
+
+def cleaned_direct_address(text: str, author_name: str) -> str | None:
+    match = DIRECT_ADDRESS_REGEX.match(text)
+    if not match:
+        return None
+    candidate = clean_text(match.group(1)).strip('" ')
+    candidate = re.sub(r"^(To|Dear)\s+", "", candidate)
+    if not candidate or candidate in MENTION_SINGLE_WORD_BLOCKLIST:
+        return None
+    author = preferred_author_name(author_name)
+    if author and candidate.lower() == author.lower():
+        return None
+    return candidate
+
+
+def first_nonempty_line(text: str) -> str:
+    for line in decode_entities(text).splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return ""
+
+
+def normalize_mention(candidate: str) -> str:
+    return " ".join(candidate.replace("&amp;", "&").split()).strip(" \t\n\r.,;:()[]{}\"'")
+
+
+def strip_honorific(candidate: str) -> str:
+    return HONORIFIC_PREFIX_REGEX.sub("", candidate).strip()
+
+
+def normalized_name_tokens(name: str) -> list[str]:
+    return [token.lower() for token in TOKEN_REGEX.findall(clean_text(name))]
+
+
+def build_participant_forms(threads: list[Thread]) -> list[tuple[str, ...]]:
+    forms: set[tuple[str, ...]] = set()
+    for thread in threads:
+        for post in thread.posts:
+            tokens = normalized_name_tokens(post.name_string)
+            if tokens:
+                forms.add(tuple(tokens))
+    return sorted(forms)
+
+
+def matches_participant(candidate: str, participant_forms: list[tuple[str, ...]]) -> bool:
+    candidate_tokens = tuple(token.lower() for token in TOKEN_REGEX.findall(candidate))
+    if not candidate_tokens:
+        return False
+    for form in participant_forms:
+        if len(candidate_tokens) > len(form):
+            continue
+        for start in range(len(form) - len(candidate_tokens) + 1):
+            if form[start : start + len(candidate_tokens)] == candidate_tokens:
+                return True
+    return False
+
+
+def is_mixed_case_entity(candidate: str) -> bool:
+    letters = [character for character in candidate if character.isalpha()]
+    if not letters:
+        return False
+    return any(character.islower() for character in letters) and any(character.isupper() for character in letters)
+
+
+def looks_like_mention(candidate: str, author_name: str, participant_forms: list[tuple[str, ...]]) -> bool:
+    candidate = normalize_mention(candidate)
+    if len(candidate) < 2:
+        return False
+    author = preferred_author_name(author_name)
+    if author and candidate.lower() == author.lower():
+        return False
+    if matches_participant(candidate, participant_forms):
+        return False
+    words = candidate.split()
+    if words[0].lower() in MENTION_CONNECTORS or words[-1].lower() in MENTION_CONNECTORS:
+        return False
+    if candidate.lower() in GENERIC_MENTION_PHRASES:
+        return False
+    if len(words) == 1 and candidate in MENTION_SINGLE_WORD_BLOCKLIST:
+        return False
+    if len(words) == 1 and candidate.upper() != candidate and len(candidate) < 5:
+        return False
+    if all(word.lower() in {"of", "the", "and", "for", "to"} for word in words):
+        return False
+    if candidate.upper() == candidate and candidate not in ALLOWED_ACRONYM_MENTIONS:
+        return False
+    if candidate.upper() != candidate and not is_mixed_case_entity(candidate):
+        return False
+    return any(character.isalpha() for character in candidate)
+
+
+def extract_mention_candidates(post: Post) -> list[str]:
+    text = decode_entities("\n".join([post.post_title, post.post_body]))
+    candidates: list[str] = []
+
+    for match in WORLD_WAR_REGEX.finditer(text):
+        candidates.append(normalize_mention(match.group(0)))
+
+    for match in QUOTED_TITLE_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(1))
+        if 2 <= len(candidate.split()) <= 6:
+            candidates.append(candidate)
+
+    for match in ACRONYM_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(0))
+        if candidate in ALLOWED_ACRONYM_MENTIONS:
+            candidates.append(candidate)
+
+    for match in CAPITALIZED_SEQUENCE_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(0))
+        words = candidate.split()
+        significant_words = [word for word in words if word.lower() not in MENTION_CONNECTORS]
+        if len(significant_words) < 2 and not any(word in ENTITY_HINT_WORDS for word in words):
+            continue
+        candidates.append(candidate)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped[:18]
+
+
+def review_mentions(candidates: list[str], participant_forms: list[tuple[str, ...]]) -> list[str]:
+    normalized = [normalize_mention(candidate) for candidate in candidates if candidate]
+    normalized = [candidate for candidate in normalized if looks_like_mention(candidate, "", participant_forms)]
+
+    by_key: dict[str, str] = {}
+    full_name_by_last: dict[str, str] = {}
+    for candidate in normalized:
+        stripped = strip_honorific(candidate)
+        words = stripped.split()
+        if len(words) >= 2 and is_mixed_case_entity(stripped):
+            full_name_by_last[words[-1].lower()] = stripped
+
+    reviewed: list[str] = []
+    seen: set[str] = set()
+    for candidate in normalized:
+        stripped = strip_honorific(candidate)
+        words = stripped.split()
+        if len(words) == 2 and words[0].endswith(".") and words[1][0].isupper():
+            stripped = full_name_by_last.get(words[-1].lower(), stripped)
+        elif len(words) == 1 and words[0][0].isupper():
+            stripped = full_name_by_last.get(words[0].lower(), stripped)
+
+        key = stripped.lower()
+        existing = by_key.get(key)
+        preferred = stripped
+        if existing:
+            if is_mixed_case_entity(existing):
+                preferred = existing
+            elif is_mixed_case_entity(stripped):
+                preferred = stripped
+            else:
+                preferred = existing
+            by_key[key] = preferred
+            continue
+        by_key[key] = preferred
+
+    for candidate in by_key.values():
+        if candidate.lower() in seen:
+            continue
+        seen.add(candidate.lower())
+        reviewed.append(candidate)
+    return reviewed[:6]
+
+
+def mentions_review_cache_key(post: Post, model: str, candidates: list[str]) -> str:
+    payload = json.dumps(
+        {
+            "model": model,
+            "post_title": post.post_title,
+            "post_body": post.post_body,
+            "candidates": candidates,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def load_mentions_review_cache(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_mentions_review_cache(path: Path, cache: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def cache_entry_mentions(entry: object) -> tuple[list[str], list[str], str]:
+    if isinstance(entry, dict):
+        llm_mentions = [str(item) for item in entry.get("llm_mentions", []) if isinstance(item, str)]
+        final_mentions = [str(item) for item in entry.get("final_mentions", []) if isinstance(item, str)]
+        review_mode = str(entry.get("review_mode", "llm_cache"))
+        return llm_mentions, final_mentions, review_mode
+    if isinstance(entry, list):
+        legacy_mentions = [str(item) for item in entry if isinstance(item, str)]
+        return legacy_mentions, legacy_mentions, "llm_cache_legacy"
+    return [], [], "llm_cache_invalid"
+
+
+def ollama_review_mentions(
+    post: Post,
+    candidates: list[str],
+    settings: dict,
+    participant_forms: list[tuple[str, ...]],
+) -> tuple[list[str], list[str], str]:
+    endpoint = settings["endpoint"]
+    payload = {
+        "model": settings["model"],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0},
+        "messages": [
+            {"role": "system", "content": MENTION_REVIEW_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "post_title": post.post_title,
+                        "post_body": post.post_body,
+                        "candidates": candidates,
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+    }
+    request_body = json.dumps(payload).encode("utf-8")
+    req = request.Request(endpoint, data=request_body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with request.urlopen(req, timeout=settings.get("timeout_seconds", 90)) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+    except (error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError):
+        fallback = review_mentions(candidates, participant_forms)
+        return [], fallback, "llm_error_fallback"
+
+    content = raw.get("message", {}).get("content", "")
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        fallback = review_mentions(candidates, participant_forms)
+        return [], fallback, "llm_parse_fallback"
+
+    mentions = parsed.get("mentions", [])
+    if not isinstance(mentions, list):
+        fallback = review_mentions(candidates, participant_forms)
+        return [], fallback, "llm_schema_fallback"
+    llm_mentions = [str(item) for item in mentions if isinstance(item, str)]
+    return llm_mentions, review_mentions(llm_mentions, participant_forms), "llm_live"
+
+
+def extract_mentions(post: Post, participant_forms: list[tuple[str, ...]]) -> list[str]:
+    text = decode_entities(post.post_body)
+    candidates: list[str] = []
+
+    for match in WORLD_WAR_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(0))
+        if looks_like_mention(candidate, post.name_string, participant_forms):
+            candidates.append(candidate)
+
+    for match in QUOTED_TITLE_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(1))
+        words = candidate.split()
+        if 2 <= len(words) <= 6 and all(
+            word in MENTION_CONNECTORS or word[:1].isupper() for word in words
+        ) and looks_like_mention(candidate, post.name_string, participant_forms):
+            candidates.append(candidate)
+
+    for match in ACRONYM_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(0))
+        if looks_like_mention(candidate, post.name_string, participant_forms) and candidate not in {"I", "PS"}:
+            candidates.append(candidate)
+
+    for match in CAPITALIZED_SEQUENCE_REGEX.finditer(text):
+        candidate = normalize_mention(match.group(0))
+        words = candidate.split()
+        significant_words = [word for word in words if word.lower() not in MENTION_CONNECTORS]
+        if len(significant_words) < 2 and not any(word in ENTITY_HINT_WORDS for word in words):
+            continue
+        if any(word in MENTION_SINGLE_WORD_BLOCKLIST for word in words):
+            continue
+        if all(word.lower() in GENERIC_ENTITY_WORDS for word in significant_words):
+            continue
+        if looks_like_mention(candidate, post.name_string, participant_forms):
+            candidates.append(candidate)
+    return review_mentions(candidates, participant_forms)
+
+
 def specific_elements(primary_tokens: set[str], body_tokens: set[str]) -> list[str]:
     combined = primary_tokens | body_tokens
     details: list[str] = []
@@ -306,11 +783,92 @@ def specific_elements(primary_tokens: set[str], body_tokens: set[str]) -> list[s
     return details[:2]
 
 
-def append_specifics(summary: str, primary_tokens: set[str], body_tokens: set[str]) -> str:
+def append_specifics(summary: str, primary_tokens: set[str], body_tokens: set[str], post_id: int) -> str:
     details = specific_elements(primary_tokens, body_tokens)
     if not details:
         return summary
-    return summary.rstrip(".") + f", touching on {human_join(details)}."
+    templates = [
+        "through {details}.",
+        "especially around {details}.",
+        "in its focus on {details}.",
+        "as it turns to {details}.",
+    ]
+    template = templates[post_id % len(templates)]
+    return summary.rstrip(".") + " " + template.format(details=human_join(details))
+
+
+def build_post_mentions_map(
+    threads: list[Thread], config: dict
+) -> tuple[dict[tuple[str, int], list[str]], list[dict[str, str]]]:
+    mention_map: dict[tuple[str, int], list[str]] = {}
+    audit_rows: list[dict[str, str]] = []
+    participant_forms = build_participant_forms(threads)
+    review_settings = config.get("mentions_llm_review", {})
+    review_enabled = bool(review_settings.get("enabled"))
+    max_new_reviews = review_settings.get("max_new_reviews_per_run")
+    cache_path = Path(review_settings.get("cache_path", "build/mentions_llm_review_cache.json"))
+    review_cache = load_mentions_review_cache(cache_path) if review_enabled else {}
+    cache_dirty = False
+    new_reviews = 0
+    for thread in threads:
+        for post in thread.posts:
+            key = (thread.thread_key, post.post_id)
+            raw_candidates: list[str] = []
+            llm_mentions: list[str] = []
+            final_mentions: list[str] = []
+            review_mode = "heuristic_no_candidates"
+            if review_enabled:
+                raw_candidates = extract_mention_candidates(post)
+                if raw_candidates:
+                    cache_key = mentions_review_cache_key(post, review_settings["model"], raw_candidates)
+                    cached_entry = review_cache.get(cache_key)
+                    if cached_entry is None:
+                        if max_new_reviews is None or new_reviews < int(max_new_reviews):
+                            llm_mentions, final_mentions, review_mode = ollama_review_mentions(
+                                post, raw_candidates, review_settings, participant_forms
+                            )
+                            review_cache[cache_key] = {
+                                "llm_mentions": llm_mentions,
+                                "final_mentions": final_mentions,
+                                "review_mode": review_mode,
+                            }
+                            cache_dirty = True
+                            new_reviews += 1
+                        else:
+                            final_mentions = extract_mentions(post, participant_forms)
+                            review_mode = "heuristic_review_cap"
+                    else:
+                        llm_mentions, final_mentions, review_mode = cache_entry_mentions(cached_entry)
+                    mention_map[key] = final_mentions
+                else:
+                    final_mentions = extract_mentions(post, participant_forms)
+                    mention_map[key] = final_mentions
+            else:
+                raw_candidates = extract_mention_candidates(post)
+                final_mentions = extract_mentions(post, participant_forms)
+                mention_map[key] = final_mentions
+                if raw_candidates:
+                    review_mode = "heuristic_only"
+            if raw_candidates or final_mentions or llm_mentions:
+                audit_rows.append(
+                    {
+                        "directory": thread.directory,
+                        "thread_key": thread.thread_key,
+                        "thread_index_id": str(thread.index_id),
+                        "thread_title": thread.thread_title,
+                        "post_id": str(post.post_id),
+                        "post_created_at": post.created_at.isoformat(),
+                        "post_title": post.post_title,
+                        "post_author": post.name_string,
+                        "review_mode": review_mode,
+                        "raw_candidates": " | ".join(raw_candidates),
+                        "llm_mentions": " | ".join(llm_mentions),
+                        "final_mentions": " | ".join(final_mentions),
+                    }
+                )
+    if review_enabled and cache_dirty:
+        save_mentions_review_cache(cache_path, review_cache)
+    return mention_map, audit_rows
 
 
 def theme_match_score(post: Post, keywords: list[str]) -> int:
@@ -346,56 +904,65 @@ def descriptive_summary(
 ) -> str:
     primary_tokens = set(lead_tokens) | set(title_tokens)
     body_tokens = set(keyword_tokens(post.post_body))
-    combined = primary_tokens | body_tokens | set(context_token_set) | set(keyword_tokens(thread.thread_title))
+    combined = primary_tokens | body_tokens
     lead_lower = lead_sentence.lower()
-    summary = "Discusses one aspect of how the war continues to be remembered and debated."
+    summary = "discusses one aspect of how the war continues to be remembered and debated"
+    reply_markers = {"response", "reply", "correction", "reconsider", "agree", "disagree", "apology"}
+    reply_target = cleaned_direct_address(first_nonempty_line(post.post_body), post.name_string)
+    is_reply = contains_any(primary_tokens | body_tokens, reply_markers) or reply_target is not None
 
     if contains_any(combined, {"south", "vietnamese", "arvn"}) and contains_any(
         combined, {"ignore", "ignored", "overlooked", "overlook"}
     ):
-        summary = "Argues that South Vietnamese soldiers and civilians are being overlooked in accounts of the war."
+        summary = "argues that South Vietnamese soldiers and civilians are being overlooked in accounts of the war"
     elif contains_any(combined, {"freedom", "expression", "rights", "right", "dissent"}) and contains_any(
         combined, {"discussion", "site", "page", "website"}
     ):
-        summary = "Defends open expression and argues over how broad the discussion should be."
+        summary = "defends open expression and argues over how broad the discussion should be"
     elif contains_any(combined, {"christian", "religion", "religious", "deliverance", "demons", "prophet"}):
         if contains_any(body_tokens | primary_tokens, {"waste", "belong", "line", "wrong", "remove", "crud", "narrow", "mission"}):
-            summary = "Pushes back against religiously framed messages appearing in the discussion."
+            summary = "pushes back against religiously framed messages appearing in the discussion"
         elif contains_any(primary_tokens | body_tokens, {"help", "support", "free"}):
-            summary = "Offers religiously framed help and support."
+            summary = "offers religiously framed help and support"
     elif contains_any(combined, {"thank", "thanks", "grateful", "appreciate", "hope", "keep"}) and contains_any(
         combined, {"site", "page", "website", "pbs"}
     ):
-        summary = "Offers appreciation for the site and its role as a place to speak and remember."
+        summary = "offers appreciation for the site and its role as a place to speak and remember"
     elif contains_any(combined, {"memory", "memories", "remember", "haunt", "haunting", "ptsd", "nightmare", "nightmares"}):
         if contains_any(combined, {"son", "daughter", "children", "child", "family", "father", "mother", "dad"}):
-            summary = "Connects painful war memories to family life and later relationships."
+            summary = "connects painful war memories to family life and later relationships"
         else:
-            summary = "Describes how memories of the war continue to surface and shape everyday life."
+            summary = "describes how memories of the war continue to surface and shape everyday life"
     elif contains_any(combined, {"friends", "friend", "combat", "brothers", "brother", "miss", "love", "trust"}) and contains_any(
         combined, {"veteran", "veterans", "soldier", "soldiers"}
     ):
-        summary = "Reflects on lost friends and the bonds formed in combat."
+        summary = "reflects on lost friends and the bonds formed in combat"
     elif contains_any(combined, {"wall", "memorial", "names", "remembrance", "remember", "honor", "honour"}):
-        summary = "Reflects on remembrance, names, and the need to honor those who died."
+        summary = "reflects on remembrance, names, and the need to honor those who died"
     elif contains_any(combined, {"heal", "healing", "peace", "understand", "understanding", "forgive", "forgiveness"}):
-        summary = "Looks for understanding, healing, and a way to live with the past."
+        summary = "looks for understanding, healing, and a way to live with the past"
     elif contains_any(combined, {"protest", "protests", "protestor", "protestors", "politics", "political", "government", "country"}):
-        summary = "Debates the politics of the war and the conflicts it still stirs."
+        summary = "debates the politics of the war and the conflicts it still stirs"
     elif contains_any(combined, {"service", "served", "duty", "oath", "charge", "veteran", "veterans", "soldier", "soldiers"}):
-        summary = "Reflects on service, duty, and what the war demanded of those who served."
+        summary = "reflects on service, duty, and what the war demanded of those who served"
     elif contains_any(combined, {"children", "child", "son", "daughter", "parents", "parent", "mother", "father", "dad", "family"}):
-        summary = "Connects the war's effects to family relationships across generations."
+        summary = "connects the war's effects to family relationships across generations"
     elif contains_any(combined, {"question", "questions", "ask", "asks", "wonder", "why", "how"}):
-        summary = "Raises questions about the war and how it should be understood."
+        summary = "raises questions about the war and how it should be understood"
     elif contains_any(combined, {"site", "page", "website", "pbs"}):
-        summary = "Comments on the site and what kind of dialogue it should make possible."
+        summary = "comments on the site and what kind of dialogue it should make possible"
     elif "?" in lead_sentence:
-        summary = "Raises questions about the war and its aftermath."
+        summary = "raises questions about the war and its aftermath"
     elif re.match(r"^(i|we|my|our)\b", lead_lower):
-        summary = "Discusses a personal response to the war and its aftermath."
+        summary = "discusses a personal response to the war and its aftermath"
 
-    return with_author_name(append_specifics(summary, primary_tokens, body_tokens), post.name_string)
+    if is_reply and reply_target:
+        summary = f"replies to {reply_target} by {reply_clause(summary)}"
+    elif is_reply:
+        summary = f"replies by {reply_clause(summary)}"
+
+    summary = summary[0].upper() + summary[1:] + "."
+    return with_author_name(append_specifics(summary, primary_tokens, body_tokens, post.post_id), post.name_string)
 
 
 def discover_forums(source_root: Path) -> list[str]:
@@ -755,6 +1322,58 @@ a {
   margin-bottom: 24px;
   padding-bottom: 16px;
 }
+.top-nav {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.top-nav-group {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.site-titlebar {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.site-titlebar-link {
+  color: inherit;
+  text-decoration: none;
+}
+.site-titlebar-mark {
+  color: #2a6a99;
+  font-size: clamp(3.5rem, 8vw, 6.75rem);
+  font-weight: 700;
+  letter-spacing: -0.07em;
+  line-height: 0.84;
+  text-transform: uppercase;
+}
+.site-titlebar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 0.38rem;
+  text-transform: uppercase;
+}
+.site-titlebar-series {
+  color: #d8d3c8;
+  font-size: clamp(1.5rem, 3.4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+}
+.site-titlebar-subtitle {
+  color: var(--muted);
+  font-size: clamp(0.95rem, 2.1vw, 1.7rem);
+  letter-spacing: 0.07em;
+  line-height: 0.95;
+}
 .eyebrow {
   color: var(--accent);
   letter-spacing: 0.08em;
@@ -791,6 +1410,73 @@ h1, h2, h3 {
   gap: 16px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+.explore-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  text-align: center;
+}
+.explore-nav-prefix {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+.explore-nav-choices {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.page-intro {
+  margin-top: 20px;
+  margin-bottom: 24px;
+}
+.rich-copy {
+  display: grid;
+  gap: 18px;
+}
+.rich-copy p {
+  margin: 0;
+}
+.rich-copy p.lead-paragraph {
+  font-size: 1.18rem;
+  line-height: 1.7;
+  color: #d8d3c8;
+}
+.callout-links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.signature {
+  margin-top: 10px;
+  color: #d8d3c8;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.credits-block + .credits-block {
+  margin-top: 28px;
+}
+.credits-block h2 {
+  margin: 0 0 12px;
+}
+.credits-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.credits-pair {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 16px;
 }
 .thread-list {
   display: grid;
@@ -863,12 +1549,19 @@ h1, h2, h3 {
   text-transform: uppercase;
 }
 .post-side-see-all {
-  font-size: 0.82rem;
+  margin-top: 10px;
+  text-align: right;
+  font-size: 0.78rem;
 }
 .post-summary {
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 400;
+  line-height: 1.5;
+}
+.post-side-inline {
+  color: var(--muted);
+  font-size: 0.86rem;
   line-height: 1.5;
 }
 .post-side-list {
@@ -931,6 +1624,27 @@ ul.flat {
   padding-left: 18px;
 }
 @media (max-width: 920px) {
+  .top-nav {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .site-titlebar {
+    gap: 12px;
+  }
+  .site-titlebar-copy {
+    padding-bottom: 0;
+  }
+  .explore-nav {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .explore-nav-choices {
+    justify-content: center;
+  }
+  .credits-pair {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
   .post-card-layout {
     grid-template-columns: 1fr;
   }
@@ -978,6 +1692,236 @@ def render_page(title: str, body: str) -> str:
 """
 
 
+def render_top_nav(
+    *,
+    current_utility: str,
+    home_href: str,
+    producer_href: str,
+    credits_href: str,
+) -> str:
+    utility = []
+    for key, label, href in (
+        ("home", "Home", home_href),
+        ("producer", "Producer Letter", producer_href),
+        ("credits", "Credits", credits_href),
+    ):
+        if key == current_utility:
+            utility.append(f"<strong>{label}</strong>")
+        else:
+            utility.append(f'<a href="{href}">{label}</a>')
+    return '<div class="top-nav"><nav class="top-nav-group">' + "".join(utility) + "</nav></div>"
+
+
+def render_explore_nav(
+    *,
+    current_primary: str,
+    index_href: str,
+    original_href: str,
+    theme_href: str,
+    original_enabled: bool,
+    theme_enabled: bool,
+) -> str:
+    items = []
+    for key, label, href, enabled in (
+        ("original", "Posted Order", original_href, original_enabled),
+        ("rank", "Most Active", index_href, True),
+        ("theme", "Topics/Themes", theme_href, theme_enabled),
+    ):
+        if not enabled:
+            continue
+        if key == current_primary:
+            items.append(f"<strong>{label}</strong>")
+        else:
+            items.append(f'<a href="{href}">{label}</a>')
+    return '<nav class="explore-nav"><span class="explore-nav-prefix">Explore by:</span><span class="explore-nav-choices">' + "".join(items) + "</span></nav>"
+
+
+def render_site_titlebar(home_href: str) -> str:
+    return f"""
+<a class="site-titlebar-link" href="{home_href}" aria-label="Go to home page">
+  <div class="site-titlebar">
+    <div class="site-titlebar-mark">DIALOGUE</div>
+    <div class="site-titlebar-copy">
+      <div class="site-titlebar-series">RE: VIETNAM</div>
+      <div class="site-titlebar-subtitle">STORIES SINCE THE WAR</div>
+    </div>
+  </div>
+</a>
+"""
+
+
+def render_rich_copy(paragraphs: list[str]) -> str:
+    return '<section class="rich-copy">' + "".join(f"<p>{escape_text(paragraph)}</p>" for paragraph in paragraphs) + "</section>"
+
+
+PRODUCER_LETTER_PARAGRAPHS = [
+    "The beginning of 1996 was an exciting time for me. As executive producer of POV I had been experimenting for a couple of years with using the internet to tie into the films we were showing, but it had all been pretty primitive. In 1995, after the introduction of the first web browsers, we created the first website for a public TV series (and probably one of the first websites for anything on television). But the site was just background information on each film, static webpages that people would read once but have little reason to come back to.",
+    "An experiment in the fall of 1995 changed how I thought about what was possible to do on the internet. When we aired \"Leona's Sister Gerri,\" a powerful film about Gerri Santoro, a woman who had died in 1964 as a result of a botched illegal abortion, we invited viewers to tell us their story of a personal experience with an unwanted pregnancy. Within 24 hours of the broadcast, we had received more than 1100 stories, not talking points in the debate about abortion, but a cross-section of first-person accounts: the choices each person faced, the values that shaped their decisions, and the consequences of those decisions.",
+    "It was a revelation and an inspiration. Why not take advantage of web technology to invite people to share their stories and engage each other in discussion in response to POV programs? Instead of the \"one to many\" experience of broadcast and traditional media, content that's created or published by a single source and then consumed by everyone out there, what would happen if we created a \"many to many\" experience where people could read what others had written, and then add their own thoughts to the mix?",
+    "So at the beginning of 1996 we set out to do some experiments, creating interactive websites tied into three of the films being broadcast that season. One of the films that seemed particularly suited for an interactive website was Frieda Lee Mock's extraordinary film about Maya Lin, the designer of the Vietnam Veterans Memorial (\"The Wall\") in Washington, DC. The film tells the story of how Lin's submission to a design competition was chosen, initial opposition to it, how she defended her vision, and the enormous power of the Wall for everyone who visits, regardless of their background or political views.",
+    "I had come of age during the height of the Vietnam War, and realized that the experiences of that era profoundly shaped so many things about me: my work choices, my personal relationships, my values. I realized that that was probably true for most people who lived through that time, whether they fought in the war, protested against it, lost a loved one or a friend, came to the US as refugees after the war, or any number of other ways that the war touched their lives and shaped their values.",
+    "Just as the Vietnam Veterans Memorial was a place for reflection and healing, I wanted to try to create a website that would offer reflection and healing. The site had two main components: stories and dialogues.",
+    "The stories were reflections on the experiences of people who had lived through the Vietnam era, not so much about what happened to them then, as how those experiences shaped who they became. We began with stories we gathered in advance of the launch of the website on the day of the broadcast, and invited people coming to the site to add their own stories, some of which were highlighted, and all of which were added to a searchable archive.",
+    "The big experiment was creating a space where people could \"talk\" with each other, what I hoped would become a dialogue across differences. We created the first couple of topics, and set it up so anyone coming to the website could add new topics. Within each topic, people could post and respond to posts from others.",
+    "It was asynchronous, meaning someone could post one day, then come back to see, and add to, what others had posted since the last time they'd been on the site. The dialogue area took on a life of its own, continuing for almost a year, ultimately with 225320 topics and tk posts.",
+    "For me personally, it was a glimpse of the potential of the internet to build community, bridge differences, deepen understanding, and widen perspectives. I was so inspired by the site that I transitioned out of my role at POV and started Web Lab, a new non-profit organization, to explore and expand the potential of the web.",
+]
+
+
+def render_credits_content() -> str:
+    leadership = [
+        ("This site was developed by", "P.O.V. Interactive, in cooperation with PBS Online, under the direction of Marc N. Weiss."),
+        ("Designed by", "Alison Cornyn, Sue Johnson and Chris Vail of Picture Projects."),
+    ]
+    contributors = [
+        ("Consultant Extraordinaire", "Fred Branfman"),
+        ("Project Coordinator", "Jill Soley"),
+        ("Coro Fellow", "Anim Steel"),
+        ("Oral History Consultant", "Bret Eynon"),
+        ("Dayton Story Circle* Convenor", "Marilyn Shannon"),
+    ]
+    special_thanks = [
+        "PBS Online",
+        "John Hollar and Cindy Johanson for unflagging support",
+        "Dave Johnston, Mike Cramer, Kevin Dando and Molly Breeden",
+        "P.O.V. Interactive",
+        "Robin Stober",
+        "WNET/13, New York, especially to Ward Chamberlin and Margot Cozell",
+        "Bill Labeur and CPSI, Colorado Springs, CO",
+        "Frieda Lee Mock, Producer/Director, Maya Lin: A Strong, Clear Vision",
+        "Thanks to the following people who volunteered their time to make this site possible: Bronwyn Jones, Beth Friedman, Dina Luciano, Lisa Hamilton, Nicole Kovach, David Marcinkowski, Rajul Mehta, Wendy Sanders, and Tania Van Bergen.",
+        "We are very grateful to the hundreds of people who have contributed their wisdom, energy and enthusiasm to this project. You will find their stories in the archives and a selection of them in the stories section.",
+        'If you have any comments or questions about the site we would love to hear from you. Please include the words "Vietnam website" in the subject line. stories@weblab.org',
+        "* A number of stories appearing on this site were shared at story circles held under the auspices of the Dayton Stories Project (DSP) in Dayton, Ohio. A collaborative arts project of CITYFOLK, The Human Race Theatre Company and other local and out-of-town partners, DSP included community sharing events at which participants told their stories to each other; a Dayton Stories component at the National Folk Festival in Dayton; an original play based on the stories; and an archive of audio tapes and transcripts of stories told during the project.",
+        "Central to the project was the belief that stories have the power to affirm individual lives, promote understanding of diverse cultures and create communities where people know and cherish one another.",
+        "At the invitation of P.O.V. Interactive, a story circle was held for members of the Vietnam Veterans of America, Miami Valley Chapter 97, and another for individuals who had opposed the war. For more information about the Dayton Stories Project, contact project director Marilyn Shannon at DTSHANNON@AOL.com",
+    ]
+    leadership_markup = "".join(
+        f'<div class="credits-pair"><div>{escape_text(label)}</div><div>{escape_text(value)}</div></div>'
+        for label, value in leadership
+    )
+    contributor_markup = "".join(
+        f'<div class="credits-pair"><div>{escape_text(role)}</div><div>{escape_text(name)}</div></div>'
+        for role, name in contributors
+    )
+    thanks_markup = "".join(f"<li>{escape_text(item)}</li>" for item in special_thanks)
+    return f"""
+<section class="credits-block rich-copy">
+  {leadership_markup}
+</section>
+<section class="credits-block">
+  <h2>Contributors</h2>
+  <div class="rich-copy">
+    {contributor_markup}
+  </div>
+</section>
+<section class="credits-block">
+  <h2>Special Thanks</h2>
+  <ul class="credits-list">
+    {thanks_markup}
+  </ul>
+</section>
+"""
+
+
+def render_producer_letter_content() -> str:
+    paragraphs = []
+    for index, paragraph in enumerate(PRODUCER_LETTER_PARAGRAPHS):
+        class_name = ' class="lead-paragraph"' if index == 0 else ""
+        paragraphs.append(f"<p{class_name}>{escape_text(paragraph)}</p>")
+    return '<section class="rich-copy">' + "".join(paragraphs) + '<p class="signature">Marc</p>' + "</section>"
+
+
+def render_home_content() -> str:
+    intro = [
+        "This site is a contemporary recovery of an early online community that formed around Re: Vietnam: Stories Since the War, a PBS / POV experiment in public dialogue. It brings back a historically important conversation in a form that people can read, browse, and study now, while still preserving the seriousness, vulnerability, and texture of the original exchange.",
+        "The layout is also designed to support new forms of exploration through generative AI. Alongside the original posts and thread structure, the site can surface summaries, recurring themes, and cross-thread connections to help readers find meaning in a large archive without flattening the voices that made the community distinctive in the first place.",
+        "The original project combined a television broadcast, a stories archive, and a discussion space at a moment when the web itself was still new. People returned over time to post, respond, reflect, argue, and remember together, creating an unusually sustained public conversation about Vietnam, memory, loss, responsibility, and healing.",
+        "What survives here is not just content but a record of how an online community once tried to listen across differences. The archive matters because it preserves that communal process as well as the individual testimonies within it.",
+    ]
+    return (
+        render_rich_copy(intro)
+        + '<div class="callout-links"><a href="producer_letter.html">Read the producer letter</a><a href="credits.html">View credits</a></div>'
+    )
+
+
+def render_info_page(config: dict, *, page_title: str, eyebrow: str, current_utility: str, content_html: str) -> str:
+    body = f"""
+<main class="page">
+  <header class="masthead">
+    {render_top_nav(
+        current_utility=current_utility,
+        home_href="index.html",
+        producer_href="producer_letter.html",
+        credits_href="credits.html",
+    )}
+    {render_site_titlebar("index.html")}
+  </header>
+  {render_explore_nav(
+      current_primary="",
+      index_href="active_threads.html",
+      original_href="index_original.html",
+      theme_href="topics.html",
+      original_enabled=bool(config.get("enable_original_order_view", False)),
+      theme_enabled=bool(config.get("output_topic_page", False)),
+  )}
+  <section class="page-intro">
+    <div class="eyebrow">{escape_text(eyebrow)}</div>
+    <h1>{escape_text(page_title)}</h1>
+  </section>
+  {content_html}
+ </main>
+"""
+    return render_page(page_title, body)
+
+
+def render_archive_page(
+    *,
+    config: dict,
+    page_title: str,
+    eyebrow: str,
+    lede: str,
+    current_primary: str,
+    index_href: str,
+    original_href: str,
+    theme_href: str,
+    home_href: str,
+    producer_href: str,
+    credits_href: str,
+    original_enabled: bool,
+    theme_enabled: bool,
+    body_html: str,
+) -> str:
+    body = f"""
+<main class="page">
+  <header class="masthead">
+    {render_top_nav(
+        current_utility="",
+        home_href=home_href,
+        producer_href=producer_href,
+        credits_href=credits_href,
+    )}
+    {render_site_titlebar(home_href)}
+  </header>
+  {render_explore_nav(
+      current_primary=current_primary,
+      index_href=index_href,
+      original_href=original_href,
+      theme_href=theme_href,
+      original_enabled=original_enabled,
+      theme_enabled=theme_enabled,
+  )}
+  <section class="page-intro">
+    <div class="eyebrow">{escape_text(eyebrow)}</div>
+    <h1>{escape_text(page_title)}</h1>
+    <p class="lede">{escape_text(lede)}</p>
+  </section>
+  {body_html}
+</main>
+"""
+    return render_page(page_title, body)
+
+
 def build_post_theme_map(matched_topics: list[dict]) -> dict[tuple[str, int], list[dict]]:
     post_theme_map: dict[tuple[str, int], list[dict]] = {}
     for topic in matched_topics:
@@ -1009,6 +1953,7 @@ def render_post_card(
     word_limit: int,
     post_theme_map: dict[tuple[str, int], list[dict]],
     post_summary_map: dict[tuple[str, int], str],
+    post_mentions_map: dict[tuple[str, int], list[str]],
     topic_base_path: str,
     current_theme_filename: str | None = None,
     action_link: str | None = None,
@@ -1025,6 +1970,7 @@ def render_post_card(
         toggle = f'<button class="toggle" data-expand-target="{post_key}">Show All</button>'
 
     summary_text = post_summary_map.get((thread.thread_key, post.post_id), "")
+    mentions = post_mentions_map.get((thread.thread_key, post.post_id), [])
     themes = post_theme_map.get((thread.thread_key, post.post_id), [])
     if themes:
         ordered_themes = sorted(list(themes), key=lambda theme: (-theme.get("score", 0), theme["title"].lower()))
@@ -1055,15 +2001,15 @@ def render_post_card(
         theme_markup = '<div class="post-side-empty">No related themes identified.</div>'
 
     side_title = '<span class="post-side-label">Related Themes</span>'
+    see_all_markup = ""
     if themes_index_path:
-        side_title = (
-            f'<span class="post-side-label">Related Themes</span>'
-            f'<span class="post-side-see-all">(<a href="{themes_index_path}">See all</a>)</span>'
-        )
+        see_all_markup = f'<div class="post-side-see-all">(<a href="{themes_index_path}">See all</a>)</div>'
 
     actions = ""
     if action_label:
         actions = f'<div class="post-actions">{action_label}</div>'
+
+    mention_markup = ", ".join(escape_text(mention) for mention in mentions) if mentions else "No notable mentions identified."
 
     return f"""<article class="post-card" id="post-{post.post_id}">
 <div class="post-card-layout">
@@ -1083,8 +2029,13 @@ def render_post_card(
 <div class="post-summary">{escape_text(summary_text)}</div>
 </section>
 <section class="post-side-section">
+<p class="post-side-title"><span class="post-side-label">Mentions</span></p>
+<div class="post-side-inline">{mention_markup}</div>
+</section>
+<section class="post-side-section">
 <p class="post-side-title">{side_title}</p>
 {theme_markup}
+{see_all_markup}
 </section>
 </aside>
 </div>
@@ -1098,59 +2049,52 @@ def render_home_page(config: dict, ordered_threads: list[Thread], original_enabl
         items.append(
             f"""<article class="thread-card">
 <h2><a href="threads/{thread.thread_key}.html">{escape_text(thread.thread_title)}</a></h2>
-<div class="post-meta">{len(thread.posts)} posts · {escape_text(range_text)} · source {escape_text(thread.directory)}</div>
+<div class="post-meta">{len(thread.posts)} posts · {escape_text(range_text)}</div>
 </article>"""
         )
-    original_link = '<a href="index_original.html">Original Order</a>' if original_enabled else ""
-    topic_link = '<a href="topics.html">Topic Explorer</a>' if config.get("output_topic_page", False) else ""
-    body = f"""
-<main class="page">
-  <header class="masthead">
-    <div class="eyebrow">Vietnam Stories</div>
-    <h1>{escape_text(config['site_title'])}</h1>
-    <p class="lede">{escape_text(config['site_subtitle'])}</p>
-    <p class="muted">Activity order ranks the special comments thread first when present, then sorts all remaining threads by post count.</p>
-    <nav class="nav">
-      <strong>Activity Order</strong>
-      {original_link}
-      {topic_link}
-    </nav>
-  </header>
-  <section class="thread-list">
-    {''.join(items)}
-  </section>
-</main>
-"""
-    return render_page(config["site_title"], body)
+    return render_archive_page(
+        config=config,
+        page_title="Active Thread Order",
+        eyebrow="Archive View",
+        lede="This view presents our online community by thread activity, surfacing the conversations that drew the most participation while still preserving the shape of the forum as people actually used it.",
+        current_primary="rank",
+        index_href="active_threads.html",
+        original_href="index_original.html",
+        theme_href="topics.html",
+        home_href="index.html",
+        producer_href="producer_letter.html",
+        credits_href="credits.html",
+        original_enabled=original_enabled,
+        theme_enabled=bool(config.get("output_topic_page", False)),
+        body_html='<section class="thread-list">' + ''.join(items) + "</section>",
+    )
 
 
 def render_original_page(config: dict, ordered_threads: list[Thread]) -> str:
-    topic_link = '<a href="topics.html">Topic Explorer</a>' if config.get("output_topic_page", False) else ""
     items = []
     for thread in ordered_threads:
         items.append(
             f"""<article class="thread-card">
 <h2><a href="threads/{thread.thread_key}.html">{escape_text(thread.thread_title)}</a></h2>
-<div class="post-meta">Original order · {escape_text(thread.directory)} · {len(thread.posts)} posts · {escape_text(format_date_range(thread.posts))}</div>
+<div class="post-meta">{len(thread.posts)} posts · {escape_text(format_date_range(thread.posts))}</div>
 </article>"""
         )
-    body = f"""
-<main class="page">
-  <header class="masthead">
-    <div class="eyebrow">Vietnam Stories</div>
-    <h1>Original Order</h1>
-    <nav class="nav">
-      <a href="index.html">Activity Order</a>
-      <strong>Original Order</strong>
-      {topic_link}
-    </nav>
-  </header>
-  <section class="thread-list">
-    {''.join(items)}
-  </section>
-</main>
-"""
-    return render_page("Original Order", body)
+    return render_archive_page(
+        config=config,
+        page_title="Original Date Order",
+        eyebrow="Archive View",
+        lede="This view follows our online community in its original sequence, keeping the conversations in the order they appeared so the dialogue can be read as it unfolded over time.",
+        current_primary="original",
+        index_href="active_threads.html",
+        original_href="index_original.html",
+        theme_href="topics.html",
+        home_href="index.html",
+        producer_href="producer_letter.html",
+        credits_href="credits.html",
+        original_enabled=True,
+        theme_enabled=bool(config.get("output_topic_page", False)),
+        body_html='<section class="thread-list">' + ''.join(items) + "</section>",
+    )
 
 
 def render_thread_page(
@@ -1158,8 +2102,8 @@ def render_thread_page(
     thread: Thread,
     post_theme_map: dict[tuple[str, int], list[dict]],
     post_summary_map: dict[tuple[str, int], str],
+    post_mentions_map: dict[tuple[str, int], list[str]],
 ) -> str:
-    topic_link = '<a href="../topics.html">Topic Explorer</a>' if config.get("output_topic_page", False) else ""
     posts_html = []
     word_limit = max(1, int(round(float(config["preview_word_limit"]) * 1.5)))
     for post in sorted(thread.posts, key=lambda item: item.post_id):
@@ -1170,27 +2114,27 @@ def render_thread_page(
                 word_limit=word_limit,
                 post_theme_map=post_theme_map,
                 post_summary_map=post_summary_map,
+                post_mentions_map=post_mentions_map,
                 topic_base_path="../topic_sets/",
                 themes_index_path="../topics.html",
             )
         )
-    body = f"""
-<main class="page">
-  <header class="masthead">
-    <div class="eyebrow">Thread</div>
-    <h1>{escape_text(thread.thread_title)}</h1>
-    <div class="post-meta">{len(thread.posts)} posts · source {escape_text(thread.directory)}</div>
-    <nav class="nav">
-      <a href="../index.html">Activity Order</a>
-      {topic_link}
-    </nav>
-  </header>
-  <section class="thread-list">
-    {''.join(posts_html)}
-  </section>
-</main>
-"""
-    return render_page(thread.thread_title, body)
+    return render_archive_page(
+        config=config,
+        page_title=thread.thread_title,
+        eyebrow="Thread",
+        lede=f"{len(thread.posts)} posts.",
+        current_primary="",
+        index_href="../active_threads.html",
+        original_href="../index_original.html",
+        theme_href="../topics.html",
+        home_href="../index.html",
+        producer_href="../producer_letter.html",
+        credits_href="../credits.html",
+        original_enabled=bool(config.get("enable_original_order_view", False)),
+        theme_enabled=bool(config.get("output_topic_page", False)),
+        body_html='<section class="thread-list">' + ''.join(posts_html) + "</section>",
+    )
 
 
 def topic_set_filename(topic_slug: str, subtopic_slug: str) -> str:
@@ -1234,6 +2178,7 @@ def render_topic_set_page(
     subtopic: dict,
     post_theme_map: dict[tuple[str, int], list[dict]],
     post_summary_map: dict[tuple[str, int], str],
+    post_mentions_map: dict[tuple[str, int], list[str]],
 ) -> str:
     thread_sections = []
     word_limit = max(1, int(round(float(config["preview_word_limit"]) * 1.5)))
@@ -1253,6 +2198,7 @@ def render_topic_set_page(
                     word_limit=word_limit,
                     post_theme_map=post_theme_map,
                     post_summary_map=post_summary_map,
+                    post_mentions_map=post_mentions_map,
                     topic_base_path="../topic_sets/",
                     current_theme_filename=current_theme_filename,
                     action_label=action_markup,
@@ -1268,29 +2214,25 @@ def render_topic_set_page(
         )
     page_title = f"{topic['title']}: {subtopic['title']}"
     durable_badge = '<div class="topic-badge">Durable Topic</div>' if topic.get("durable") else ""
-    body = f"""
-<main class="page">
-  <header class="masthead">
-    <div class="eyebrow">Topic Explorer</div>
-    {durable_badge}
-    <h1>{escape_text(page_title)}</h1>
-    <p class="lede">{escape_text(subtopic['summary'])}</p>
-    <div class="post-meta">{subtopic['thread_count']} matched threads · {subtopic['post_count']} matched posts</div>
-    <nav class="nav">
-      <a href="../topics.html">Topic Explorer</a>
-      <a href="../index.html">Activity Order</a>
-    </nav>
-  </header>
-  <section class="thread-list">
-    {''.join(thread_sections)}
-  </section>
-</main>
-"""
-    return render_page(page_title, body)
+    return render_archive_page(
+        config=config,
+        page_title=page_title,
+        eyebrow="Explore Archive",
+        lede=subtopic["summary"],
+        current_primary="theme",
+        index_href="../active_threads.html",
+        original_href="../index_original.html",
+        theme_href="../topics.html",
+        home_href="../index.html",
+        producer_href="../producer_letter.html",
+        credits_href="../credits.html",
+        original_enabled=bool(config.get("enable_original_order_view", False)),
+        theme_enabled=True,
+        body_html='<section class="thread-list">' + durable_badge + "".join(thread_sections) + "</section>",
+    )
 
 
 def render_topics_page(config: dict, matched: list[dict]) -> str:
-    original_link = '<a href="index_original.html">Original Order</a>' if config.get("enable_original_order_view", False) else ""
     cards = []
     for topic in matched:
         durable_badge = '<div class="topic-badge">Durable Topic</div>' if topic.get("durable") else ""
@@ -1313,24 +2255,22 @@ def render_topics_page(config: dict, matched: list[dict]) -> str:
 <div class="topic-match-list">{links}</div>
 </article>"""
         )
-    body = f"""
-<main class="page">
-  <header class="masthead">
-    <div class="eyebrow">Topic Explorer</div>
-    <h1>Topic Explorer</h1>
-    <p class="lede">This page is intentionally provisional. The topic list is editable and the matches are heuristic.</p>
-    <nav class="nav">
-      <a href="index.html">Activity Order</a>
-      {original_link}
-      <strong>Topic Explorer</strong>
-    </nav>
-  </header>
-  <section class="thread-list">
-    {''.join(cards)}
-  </section>
-</main>
-"""
-    return render_page("Topic Explorer", body)
+    return render_archive_page(
+        config=config,
+        page_title="Theme Explorer",
+        eyebrow="Explore Archive",
+        lede="This view organizes our online community around recurring themes, making it easier to move across threads by subject rather than chronology while still staying grounded in the original conversations.",
+        current_primary="theme",
+        index_href="active_threads.html",
+        original_href="index_original.html",
+        theme_href="topics.html",
+        home_href="index.html",
+        producer_href="producer_letter.html",
+        credits_href="credits.html",
+        original_enabled=bool(config.get("enable_original_order_view", False)),
+        theme_enabled=True,
+        body_html='<section class="thread-list">' + ''.join(cards) + "</section>",
+    )
 
 
 def emit_csv(threads: list[Thread], path: Path) -> None:
@@ -1385,18 +2325,77 @@ def emit_csv(threads: list[Thread], path: Path) -> None:
                 )
 
 
-def write_site(config: dict, threads: list[Thread], output_dir: Path) -> None:
+def emit_mentions_audit(rows: list[dict[str, str]], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "directory",
+                "thread_key",
+                "thread_index_id",
+                "thread_title",
+                "post_id",
+                "post_created_at",
+                "post_title",
+                "post_author",
+                "review_mode",
+                "raw_candidates",
+                "llm_mentions",
+                "final_mentions",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[dict[str, str]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     thread_dir = output_dir / "threads"
     thread_dir.mkdir(exist_ok=True)
     topic_set_dir = output_dir / "topic_sets"
     topic_set_dir.mkdir(exist_ok=True)
+    legacy_home_path = output_dir / "home.html"
+    if legacy_home_path.exists():
+        legacy_home_path.unlink()
 
     activity_threads = activity_order(threads)
     original_threads = original_order(threads)
     original_enabled = bool(config.get("enable_original_order_view", False))
 
-    (output_dir / "index.html").write_text(render_home_page(config, activity_threads, original_enabled), encoding="utf-8")
+    (output_dir / "index.html").write_text(
+        render_info_page(
+            config,
+            page_title="Recovering the Early History of Television on the Web",
+            eyebrow="Project Context",
+            current_utility="home",
+            content_html=render_home_content(),
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "active_threads.html").write_text(
+        render_home_page(config, activity_threads, original_enabled), encoding="utf-8"
+    )
+    (output_dir / "producer_letter.html").write_text(
+        render_info_page(
+            config,
+            page_title="A Letter from Producer Marc Weiss",
+            eyebrow="Project Context",
+            current_utility="producer",
+            content_html=render_producer_letter_content(),
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "credits.html").write_text(
+        render_info_page(
+            config,
+            page_title="Credits",
+            eyebrow="Project Credits",
+            current_utility="credits",
+            content_html=render_credits_content(),
+        ),
+        encoding="utf-8",
+    )
     if original_enabled:
         (output_dir / "index_original.html").write_text(
             render_original_page(config, original_threads), encoding="utf-8"
@@ -1407,6 +2406,7 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> None:
         matched = match_topics(activity_threads, topic_defs)
         post_theme_map = build_post_theme_map(matched)
         post_summary_map = build_post_summary_map(threads)
+        post_mentions_map, mentions_audit_rows = build_post_mentions_map(threads, config)
         (output_dir / "topics.html").write_text(
             render_topics_page(config, matched), encoding="utf-8"
         )
@@ -1414,16 +2414,26 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> None:
             for subtopic in topic["subtopics"]:
                 filename = topic_set_filename(topic["slug"], subtopic["slug"])
                 (topic_set_dir / filename).write_text(
-                    render_topic_set_page(config, topic, subtopic, post_theme_map, post_summary_map), encoding="utf-8"
+                    render_topic_set_page(
+                        config,
+                        topic,
+                        subtopic,
+                        post_theme_map,
+                        post_summary_map,
+                        post_mentions_map,
+                    ),
+                    encoding="utf-8",
                 )
     else:
         post_theme_map = {}
         post_summary_map = build_post_summary_map(threads)
+        post_mentions_map, mentions_audit_rows = build_post_mentions_map(threads, config)
     for thread in threads:
         filename = f"{thread.thread_key}.html"
         (thread_dir / filename).write_text(
-            render_thread_page(config, thread, post_theme_map, post_summary_map), encoding="utf-8"
+            render_thread_page(config, thread, post_theme_map, post_summary_map, post_mentions_map), encoding="utf-8"
         )
+    return mentions_audit_rows
 
 
 def main() -> None:
@@ -1439,10 +2449,12 @@ def main() -> None:
         threads = load_threads_from_csv(args.csv_input)
 
     threads = prepare_threads(threads, config.get("email_redaction_mode", "none"))
-    write_site(config, threads, args.output_dir)
+    mentions_audit_rows = write_site(config, threads, args.output_dir)
 
     if args.emit_csv:
         emit_csv(threads, args.emit_csv)
+    if args.emit_mentions_audit:
+        emit_mentions_audit(mentions_audit_rows, args.emit_mentions_audit)
 
     print(f"Wrote draft site to {args.output_dir}")
     print(f"Loaded {len(threads)} threads and {sum(len(thread.posts) for thread in threads)} posts")

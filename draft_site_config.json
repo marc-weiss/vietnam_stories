@@ -5,8 +5,16 @@
     "discuss",
     "discuss2"
   ],
-  "enable_original_order_view": false,
+  "enable_original_order_view": true,
   "email_redaction_mode": "none",
+  "mentions_llm_review": {
+    "enabled": false,
+    "endpoint": "http://192.168.86.12:11434/api/chat",
+    "model": "gemma4:26b",
+    "timeout_seconds": 90,
+    "cache_path": "build/mentions_llm_review_cache.json",
+    "max_new_reviews_per_run": 24
+  },
   "preview_word_limit": 120,
   "output_topic_page": true,
   "topic_curation_path": "draft_topic_curation.json"
