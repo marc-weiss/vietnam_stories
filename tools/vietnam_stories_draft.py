@@ -7,6 +7,7 @@ import csv
 import hashlib
 import html
 import json
+import math
 import re
 import signal
 import socket
@@ -19,6 +20,7 @@ from urllib import error, request
 
 
 POST_DATE_FORMAT = "%a %b %d %H:%M:%S %Z %Y"
+THREAD_BATCH_SIZE = 25
 EMAIL_REGEX = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 TOKEN_REGEX = re.compile(r"[A-Za-z0-9']+")
 SENTENCE_SPLIT_REGEX = re.compile(r"(?<=[.!?])\s+|\n{2,}")
@@ -293,6 +295,7 @@ Rules:
 class Post:
     post_id: int
     created_at: datetime
+    created_at_display: str
     post_title: str
     post_body: str
     email_string: str
@@ -985,6 +988,255 @@ def format_date_with_ordinal(date: datetime) -> str:
     return f"{date.strftime('%B')} {day}{suffix}, {date.year}"
 
 
+def format_full_timestamp(date: datetime) -> str:
+    return date.strftime(POST_DATE_FORMAT)
+
+
+def original_web_css() -> str:
+    return """
+body.original-web-body {
+  background: #000000;
+  margin: 0;
+}
+.original-web-page {
+  padding-top: 0;
+}
+.original-web-content {
+  font-size: 16px;
+  line-height: 1.35;
+  color: #ffffff;
+  font-family: "Times New Roman", Times, serif;
+}
+.original-web-thread-content {
+  margin-top: 1.35em;
+}
+.original-web-jump,
+.original-web-batch-nav {
+  font-size: 16px;
+  line-height: 1.35;
+}
+.original-web-batch-nav {
+  margin: 10px 0 22px;
+  text-align: center;
+}
+.original-web-jump {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 8px;
+}
+.original-web-content a {
+  color: inherit;
+  text-decoration: underline;
+}
+.original-web-topics a {
+  color: #86aecd;
+}
+.original-web-topics a:visited {
+  color: #3b8f8a;
+}
+.original-web-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  color: #ffffff;
+}
+.original-web-topics {
+  margin: 0;
+}
+.original-web-topic-row {
+  margin: 0 0 6px;
+}
+.original-web-topic-number,
+.original-web-topic-count {
+  color: #ffffff;
+}
+.original-web-post {
+  margin: 0 0 52px;
+}
+.original-web-post-title {
+  color: #cc0000;
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+.original-web-post-date {
+  margin: 0 0 14px;
+  font-family: "Courier New", Courier, monospace;
+  color: #ffffff;
+}
+.original-web-post-body {
+  white-space: pre-wrap;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  color: #f0f0f0;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  max-width: 500pt;
+}
+.original-web-signature {
+  margin-top: 12px;
+  white-space: pre-wrap;
+  font-family: "Courier New", Courier, monospace;
+  color: #ffffff;
+}
+.original-web-post-spacer {
+  height: 2.5em;
+}
+"""
+
+
+def render_original_web_page(title: str, body: str, *, root_prefix: str) -> str:
+    return render_page(
+        title,
+        f"""<main class="page original-web-page">
+  <header class="masthead">
+    {render_top_nav(
+        current_utility="",
+        home_href=f"{root_prefix}index.html",
+        producer_href=f"{root_prefix}producer_letter.html",
+        credits_href=f"{root_prefix}credits.html",
+    )}
+    {render_site_titlebar(f"{root_prefix}index.html")}
+  </header>
+  {render_explore_nav(
+      current_primary="original_web",
+      index_href=f"{root_prefix}active_threads.html",
+      original_href=f"{root_prefix}index_original.html",
+      original_web_href=f"{root_prefix}original_web_design.html",
+      theme_href=f"{root_prefix}topics.html",
+      original_enabled=True,
+      original_web_enabled=True,
+      theme_enabled=True,
+  )}
+  <section class="original-web-content">
+    {body}
+  </section>
+</main>""",
+        extra_css=original_web_css(),
+        body_class="original-web-body",
+    )
+
+
+def original_web_thread_page_name(thread_key: str, batch_index: int) -> str:
+    return f"{thread_key}.html" if batch_index == 0 else f"{thread_key}__{batch_index + 1}.html"
+
+
+def original_web_batch_label(start_index: int, batch_posts: list[Post]) -> str:
+    return f"{start_index + 1} - {start_index + len(batch_posts)}"
+
+
+def modern_thread_page_name(thread_key: str, batch_index: int) -> str:
+    return original_web_thread_page_name(thread_key, batch_index)
+
+
+def thread_batch_count(thread: Thread) -> int:
+    return max(1, math.ceil(len(thread.posts) / THREAD_BATCH_SIZE))
+
+
+def thread_batch_index_for_post(thread: Thread, post_id: int) -> int:
+    sorted_posts = sorted(thread.posts, key=lambda item: item.post_id)
+    for index, post in enumerate(sorted_posts):
+        if post.post_id == post_id:
+            return index // THREAD_BATCH_SIZE
+    return 0
+
+
+def render_original_web_batch_nav(
+    *,
+    thread: Thread,
+    total_posts: int,
+    batch_index: int,
+    batch_count: int,
+    root_prefix: str,
+) -> str:
+    items = []
+    previous_count = min(THREAD_BATCH_SIZE, batch_index * THREAD_BATCH_SIZE)
+    remaining_after_current = total_posts - ((batch_index + 1) * THREAD_BATCH_SIZE)
+    next_count = min(THREAD_BATCH_SIZE, max(0, remaining_after_current))
+    if previous_count > 0:
+        previous_href = original_web_thread_page_name(thread.thread_key, batch_index - 1)
+        items.append(f'<a href="{previous_href}">Previous {previous_count}</a>')
+    for current_index in range(batch_count):
+        start = current_index * THREAD_BATCH_SIZE
+        end = min(total_posts, start + THREAD_BATCH_SIZE)
+        label = f"{start + 1} - {end}"
+        href = original_web_thread_page_name(thread.thread_key, current_index)
+        if current_index == batch_index:
+            items.append(f"<strong>{label}</strong>")
+        else:
+            items.append(f'<a href="{href}">{label}</a>')
+    if next_count > 0:
+        next_href = original_web_thread_page_name(thread.thread_key, batch_index + 1)
+        items.append(f'<a href="{next_href}">Next {next_count}</a>')
+    return '<div class="original-web-batch-nav">' + " | ".join(items) + "</div>"
+
+
+def render_original_web_thread_batch_page(
+    thread: Thread,
+    *,
+    batch_index: int,
+    batch_posts: list[Post],
+    batch_count: int,
+) -> str:
+    posts_markup = []
+    for post in batch_posts:
+        signature_parts = []
+        if post.email_string.strip():
+            signature_parts.append(post.email_string.strip())
+        if post.name_string.strip():
+            signature_parts.append(f"({post.name_string.strip()})")
+        signature_text = "--" if not signature_parts else "-- " + " ".join(signature_parts)
+        posts_markup.append(
+            f"""<article class="original-web-post">
+<h2 class="original-web-post-title" id="post-{post.post_id}">{escape_text(post.post_title.upper())}</h2>
+<div class="original-web-post-date">{escape_text(post.created_at_display or format_full_timestamp(post.created_at))}</div>
+<div class="original-web-post-body">{escape_text(post.post_body)}</div>
+<div class="original-web-signature">{escape_text(signature_text)}</div>
+<div class="original-web-post-spacer"></div>
+</article>"""
+        )
+    nav = render_original_web_batch_nav(
+        thread=thread,
+        total_posts=len(thread.posts),
+        batch_index=batch_index,
+        batch_count=batch_count,
+        root_prefix="../",
+    )
+    body = f"""
+<div class="original-web-thread-content">
+<div id="top"></div>
+<h1>{escape_text(thread.thread_title)}</h1>
+<div class="original-web-jump"><a href="../original_web_design.html">Back to Topics</a><a href="#bottom">Go to bottom</a></div>
+{nav}
+{''.join(posts_markup)}
+<div id="bottom"></div>
+<div class="original-web-jump"><a href="../original_web_design.html">Back to Topics</a><a href="#top">Go to top</a></div>
+{nav}
+</div>
+"""
+    return render_original_web_page(thread.thread_title, body, root_prefix="../")
+
+
+def render_original_web_topics_page(ordered_threads: list[Thread]) -> str:
+    rows = []
+    for index, thread in enumerate(ordered_threads, start=1):
+        rows.append(
+            f'<div class="original-web-topic-row"><span class="original-web-topic-number">{index}. </span>'
+            f'<a href="threads_original_web/{original_web_thread_page_name(thread.thread_key, 0)}">{escape_text(thread.thread_title)}</a> '
+            f'<span class="original-web-topic-count">({len(thread.posts)} posts)</span></div>'
+        )
+    body = f"""
+<h1>Topics</h1>
+<section class="original-web-topics">
+{''.join(rows)}
+</section>
+"""
+    return render_original_web_page("Original Web Design", body, root_prefix="")
+
+
 def format_date_range(posts: list[Post]) -> str:
     if not posts:
         return "Unknown date range"
@@ -1029,7 +1281,8 @@ def parse_post_file(path: Path, thread_id: int, directory_name: str) -> Post | N
         return None
 
     post_title = strip_tags(title_match.group(1))
-    created_at = parse_legacy_date(date_match.group(1))
+    created_at_display = " ".join(date_match.group(1).split())
+    created_at = parse_legacy_date(created_at_display)
     post_body = strip_tags(body_match.group(1))
     email_string = clean_text(author_match.group(1))
     name_string = clean_text(author_match.group(2))
@@ -1038,6 +1291,7 @@ def parse_post_file(path: Path, thread_id: int, directory_name: str) -> Post | N
     return Post(
         post_id=post_id,
         created_at=created_at,
+        created_at_display=created_at_display,
         post_title=post_title,
         post_body=post_body,
         email_string=email_string,
@@ -1117,6 +1371,9 @@ def load_threads_from_csv(csv_input: Path) -> list[Thread]:
                 Post(
                     post_id=int(post_id_text),
                     created_at=created_at,
+                    created_at_display=(row.get("post_created_at_display", "") or "").strip()
+                    or (row.get("post_created_at", "") or "").strip()
+                    or created_at.isoformat(),
                     post_title=clean_text(row["post_title"]),
                     post_body=clean_text(row["post_body"]),
                     email_string=clean_text(row.get("post_email", "")),
@@ -1143,6 +1400,7 @@ def prepare_threads(threads: list[Thread], email_redaction_mode: str) -> list[Th
                 Post(
                     post_id=post.post_id,
                     created_at=post.created_at,
+                    created_at_display=post.created_at_display,
                     post_title=post.post_title,
                     post_body=maybe_redact_emails(post.post_body, email_redaction_mode),
                     email_string=maybe_redact_emails(post.email_string, email_redaction_mode),
@@ -1411,6 +1669,13 @@ h1, h2, h3 {
   flex-wrap: wrap;
   margin-top: 16px;
 }
+.thread-batch-nav {
+  text-align: center;
+  margin: 0 0 20px;
+}
+.thread-batch-nav.bottom {
+  margin: 20px 0 0;
+}
 .explore-nav {
   display: flex;
   justify-content: center;
@@ -1675,18 +1940,26 @@ document.addEventListener("click", (event) => {
 """
 
 
-def render_page(title: str, body: str) -> str:
+def render_page(
+    title: str,
+    body: str,
+    *,
+    extra_css: str = "",
+    extra_script: str = "",
+    body_class: str = "",
+) -> str:
+    body_attr = f' class="{body_class}"' if body_class else ""
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title, quote=False)}</title>
-  <style>{base_css()}</style>
+  <style>{base_css()}{extra_css}</style>
 </head>
-<body>
+<body{body_attr}>
 {body}
-<script>{base_script()}</script>
+<script>{base_script()}{extra_script}</script>
 </body>
 </html>
 """
@@ -1717,23 +1990,28 @@ def render_explore_nav(
     current_primary: str,
     index_href: str,
     original_href: str,
+    original_web_href: str,
     theme_href: str,
     original_enabled: bool,
+    original_web_enabled: bool,
     theme_enabled: bool,
 ) -> str:
     items = []
     for key, label, href, enabled in (
         ("original", "Posted Order", original_href, original_enabled),
         ("rank", "Most Active", index_href, True),
+        ("original_web", "Original Web Design", original_web_href, original_web_enabled),
         ("theme", "Topics/Themes", theme_href, theme_enabled),
     ):
+        if key == "theme":
+            continue
         if not enabled:
             continue
         if key == current_primary:
             items.append(f"<strong>{label}</strong>")
         else:
             items.append(f'<a href="{href}">{label}</a>')
-    return '<nav class="explore-nav"><span class="explore-nav-prefix">Explore by:</span><span class="explore-nav-choices">' + "".join(items) + "</span></nav>"
+    return '<nav class="explore-nav"><span class="explore-nav-prefix">Explore by: </span><span class="explore-nav-choices">' + "".join(items) + "</span></nav>"
 
 
 def render_site_titlebar(home_href: str) -> str:
@@ -1835,12 +2113,20 @@ def render_producer_letter_content() -> str:
 def render_home_content() -> str:
     intro = [
         "This site is a contemporary recovery of an early online community that formed around Re: Vietnam: Stories Since the War, a PBS / POV experiment in public dialogue. It brings back a historically important conversation in a form that people can read, browse, and study now, while still preserving the seriousness, vulnerability, and texture of the original exchange.",
-        "The layout is also designed to support new forms of exploration through generative AI. Alongside the original posts and thread structure, the site can surface summaries, recurring themes, and cross-thread connections to help readers find meaning in a large archive without flattening the voices that made the community distinctive in the first place.",
         "The original project combined a television broadcast, a stories archive, and a discussion space at a moment when the web itself was still new. People returned over time to post, respond, reflect, argue, and remember together, creating an unusually sustained public conversation about Vietnam, memory, loss, responsibility, and healing.",
         "What survives here is not just content but a record of how an online community once tried to listen across differences. The archive matters because it preserves that communal process as well as the individual testimonies within it.",
     ]
+    second_paragraph = (
+        'We have updated the site to utilize the latest in web technologies to improve accessibility across a variety '
+        'of devices, but you can see the original web design, which captures the unique look of the early web, '
+        '<a href="original_web_design.html">on this page</a>.'
+    )
     return (
-        render_rich_copy(intro)
+        '<section class="rich-copy">'
+        + f"<p>{escape_text(intro[0])}</p>"
+        + f"<p>{second_paragraph}</p>"
+        + "".join(f"<p>{escape_text(paragraph)}</p>" for paragraph in intro[1:])
+        + "</section>"
         + '<div class="callout-links"><a href="producer_letter.html">Read the producer letter</a><a href="credits.html">View credits</a></div>'
     )
 
@@ -1861,8 +2147,10 @@ def render_info_page(config: dict, *, page_title: str, eyebrow: str, current_uti
       current_primary="",
       index_href="active_threads.html",
       original_href="index_original.html",
+      original_web_href="original_web_design.html",
       theme_href="topics.html",
       original_enabled=bool(config.get("enable_original_order_view", False)),
+      original_web_enabled=True,
       theme_enabled=bool(config.get("output_topic_page", False)),
   )}
   <section class="page-intro">
@@ -1884,14 +2172,18 @@ def render_archive_page(
     current_primary: str,
     index_href: str,
     original_href: str,
+    original_web_href: str,
     theme_href: str,
     home_href: str,
     producer_href: str,
     credits_href: str,
     original_enabled: bool,
+    original_web_enabled: bool,
     theme_enabled: bool,
     body_html: str,
 ) -> str:
+    lede_markup = f'<p class="lede">{escape_text(lede)}</p>' if lede else ""
+    eyebrow_markup = f'<div class="eyebrow">{escape_text(eyebrow)}</div>' if eyebrow else ""
     body = f"""
 <main class="page">
   <header class="masthead">
@@ -1907,14 +2199,16 @@ def render_archive_page(
       current_primary=current_primary,
       index_href=index_href,
       original_href=original_href,
+      original_web_href=original_web_href,
       theme_href=theme_href,
       original_enabled=original_enabled,
+      original_web_enabled=original_web_enabled,
       theme_enabled=theme_enabled,
   )}
   <section class="page-intro">
-    <div class="eyebrow">{escape_text(eyebrow)}</div>
+    {eyebrow_markup}
     <h1>{escape_text(page_title)}</h1>
-    <p class="lede">{escape_text(lede)}</p>
+    {lede_markup}
   </section>
   {body_html}
 </main>
@@ -2012,7 +2306,6 @@ def render_post_card(
     mention_markup = ", ".join(escape_text(mention) for mention in mentions) if mentions else "No notable mentions identified."
 
     return f"""<article class="post-card" id="post-{post.post_id}">
-<div class="post-card-layout">
 <div class="post-main">
 <div class="thread-heading">
   <h3>{escape_text(post.post_title)}</h3>
@@ -2023,23 +2316,38 @@ def render_post_card(
 {full_markup}
 {toggle}
 </div>
-<aside class="post-side">
-<section class="post-side-section">
-<p class="post-side-title"><span class="post-side-label">AI Summary</span></p>
-<div class="post-summary">{escape_text(summary_text)}</div>
-</section>
-<section class="post-side-section">
-<p class="post-side-title"><span class="post-side-label">Mentions</span></p>
-<div class="post-side-inline">{mention_markup}</div>
-</section>
-<section class="post-side-section">
-<p class="post-side-title">{side_title}</p>
-{theme_markup}
-{see_all_markup}
-</section>
-</aside>
-</div>
 </article>"""
+
+
+def render_modern_thread_batch_nav(
+    *,
+    thread: Thread,
+    batch_index: int,
+    css_class: str = "",
+) -> str:
+    total_posts = len(thread.posts)
+    batch_count = thread_batch_count(thread)
+    items = []
+    previous_count = min(THREAD_BATCH_SIZE, batch_index * THREAD_BATCH_SIZE)
+    remaining_after_current = total_posts - ((batch_index + 1) * THREAD_BATCH_SIZE)
+    next_count = min(THREAD_BATCH_SIZE, max(0, remaining_after_current))
+    if previous_count > 0:
+        previous_href = modern_thread_page_name(thread.thread_key, batch_index - 1)
+        items.append(f'<a href="{previous_href}">Previous {previous_count}</a>')
+    for current_index in range(batch_count):
+        start = current_index * THREAD_BATCH_SIZE
+        end = min(total_posts, start + THREAD_BATCH_SIZE)
+        label = f"{start + 1} - {end}"
+        href = modern_thread_page_name(thread.thread_key, current_index)
+        if current_index == batch_index:
+            items.append(f"<strong>{label}</strong>")
+        else:
+            items.append(f'<a href="{href}">{label}</a>')
+    if next_count > 0:
+        next_href = modern_thread_page_name(thread.thread_key, batch_index + 1)
+        items.append(f'<a href="{next_href}">Next {next_count}</a>')
+    classes = "thread-batch-nav" if not css_class else f"thread-batch-nav {css_class}"
+    return f'<div class="{classes}">' + " | ".join(items) + "</div>"
 
 
 def render_home_page(config: dict, ordered_threads: list[Thread], original_enabled: bool) -> str:
@@ -2048,23 +2356,25 @@ def render_home_page(config: dict, ordered_threads: list[Thread], original_enabl
         range_text = format_date_range(thread.posts)
         items.append(
             f"""<article class="thread-card">
-<h2><a href="threads/{thread.thread_key}.html">{escape_text(thread.thread_title)}</a></h2>
+<h2><a href="threads/{modern_thread_page_name(thread.thread_key, 0)}">{escape_text(thread.thread_title)}</a></h2>
 <div class="post-meta">{len(thread.posts)} posts · {escape_text(range_text)}</div>
 </article>"""
         )
     return render_archive_page(
         config=config,
-        page_title="Active Thread Order",
-        eyebrow="Archive View",
+        page_title="Most Active",
+        eyebrow="",
         lede="This view presents our online community by thread activity, surfacing the conversations that drew the most participation while still preserving the shape of the forum as people actually used it.",
         current_primary="rank",
         index_href="active_threads.html",
         original_href="index_original.html",
+        original_web_href="original_web_design.html",
         theme_href="topics.html",
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
         original_enabled=original_enabled,
+        original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
         body_html='<section class="thread-list">' + ''.join(items) + "</section>",
     )
@@ -2075,23 +2385,25 @@ def render_original_page(config: dict, ordered_threads: list[Thread]) -> str:
     for thread in ordered_threads:
         items.append(
             f"""<article class="thread-card">
-<h2><a href="threads/{thread.thread_key}.html">{escape_text(thread.thread_title)}</a></h2>
+<h2><a href="threads/{modern_thread_page_name(thread.thread_key, 0)}">{escape_text(thread.thread_title)}</a></h2>
 <div class="post-meta">{len(thread.posts)} posts · {escape_text(format_date_range(thread.posts))}</div>
 </article>"""
         )
     return render_archive_page(
         config=config,
-        page_title="Original Date Order",
-        eyebrow="Archive View",
+        page_title="Posted Order",
+        eyebrow="",
         lede="This view follows our online community in its original sequence, keeping the conversations in the order they appeared so the dialogue can be read as it unfolded over time.",
         current_primary="original",
         index_href="active_threads.html",
         original_href="index_original.html",
+        original_web_href="original_web_design.html",
         theme_href="topics.html",
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
         original_enabled=True,
+        original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
         body_html='<section class="thread-list">' + ''.join(items) + "</section>",
     )
@@ -2103,10 +2415,15 @@ def render_thread_page(
     post_theme_map: dict[tuple[str, int], list[dict]],
     post_summary_map: dict[tuple[str, int], str],
     post_mentions_map: dict[tuple[str, int], list[str]],
+    *,
+    batch_index: int,
 ) -> str:
     posts_html = []
     word_limit = max(1, int(round(float(config["preview_word_limit"]) * 1.5)))
-    for post in sorted(thread.posts, key=lambda item: item.post_id):
+    sorted_posts = sorted(thread.posts, key=lambda item: item.post_id)
+    start = batch_index * THREAD_BATCH_SIZE
+    batch_posts = sorted_posts[start : start + THREAD_BATCH_SIZE]
+    for post in batch_posts:
         posts_html.append(
             render_post_card(
                 thread=thread,
@@ -2119,21 +2436,25 @@ def render_thread_page(
                 themes_index_path="../topics.html",
             )
         )
+    top_batch_nav = render_modern_thread_batch_nav(thread=thread, batch_index=batch_index)
+    bottom_batch_nav = render_modern_thread_batch_nav(thread=thread, batch_index=batch_index, css_class="bottom")
     return render_archive_page(
         config=config,
         page_title=thread.thread_title,
-        eyebrow="Thread",
-        lede=f"{len(thread.posts)} posts.",
+        eyebrow="Topic",
+        lede="",
         current_primary="",
         index_href="../active_threads.html",
         original_href="../index_original.html",
+        original_web_href="../original_web_design.html",
         theme_href="../topics.html",
         home_href="../index.html",
         producer_href="../producer_letter.html",
         credits_href="../credits.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
+        original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
-        body_html='<section class="thread-list">' + ''.join(posts_html) + "</section>",
+        body_html=top_batch_nav + '<section class="thread-list">' + ''.join(posts_html) + "</section>" + bottom_batch_nav,
     )
 
 
@@ -2187,7 +2508,10 @@ def render_topic_set_page(
         thread = match["thread"]
         posts_html = []
         for post in match["posts"]:
-            full_thread_link = f'../threads/{thread.thread_key}.html#post-{post.post_id}'
+            full_thread_link = (
+                f'../threads/{modern_thread_page_name(thread.thread_key, thread_batch_index_for_post(thread, post.post_id))}'
+                f'#post-{post.post_id}'
+            )
             action_markup = (
                 f'From the "<a href="{full_thread_link}">{escape_text(thread.thread_title)}</a>" thread.'
             )
@@ -2222,11 +2546,13 @@ def render_topic_set_page(
         current_primary="theme",
         index_href="../active_threads.html",
         original_href="../index_original.html",
+        original_web_href="../original_web_design.html",
         theme_href="../topics.html",
         home_href="../index.html",
         producer_href="../producer_letter.html",
         credits_href="../credits.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
+        original_web_enabled=True,
         theme_enabled=True,
         body_html='<section class="thread-list">' + durable_badge + "".join(thread_sections) + "</section>",
     )
@@ -2263,11 +2589,13 @@ def render_topics_page(config: dict, matched: list[dict]) -> str:
         current_primary="theme",
         index_href="active_threads.html",
         original_href="index_original.html",
+        original_web_href="original_web_design.html",
         theme_href="topics.html",
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
+        original_web_enabled=True,
         theme_enabled=True,
         body_html='<section class="thread-list">' + ''.join(cards) + "</section>",
     )
@@ -2280,6 +2608,7 @@ def emit_csv(threads: list[Thread], path: Path) -> None:
         writer.writerow(
             [
                 "post_created_at",
+                "post_created_at_display",
                 "thread_title",
                 "post_title",
                 "post_email",
@@ -2312,6 +2641,7 @@ def emit_csv(threads: list[Thread], path: Path) -> None:
                 writer.writerow(
                     [
                         post.created_at.isoformat(),
+                        post.created_at_display,
                         thread.thread_title,
                         post.post_title,
                         post.email_string,
@@ -2353,6 +2683,8 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
     output_dir.mkdir(parents=True, exist_ok=True)
     thread_dir = output_dir / "threads"
     thread_dir.mkdir(exist_ok=True)
+    original_web_thread_dir = output_dir / "threads_original_web"
+    original_web_thread_dir.mkdir(exist_ok=True)
     topic_set_dir = output_dir / "topic_sets"
     topic_set_dir.mkdir(exist_ok=True)
     legacy_home_path = output_dir / "home.html"
@@ -2400,6 +2732,9 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
         (output_dir / "index_original.html").write_text(
             render_original_page(config, original_threads), encoding="utf-8"
         )
+    (output_dir / "original_web_design.html").write_text(
+        render_original_web_topics_page(original_threads), encoding="utf-8"
+    )
     if config.get("output_topic_page", False):
         topic_path = Path(config["topic_curation_path"])
         topic_defs = json.loads(topic_path.read_text(encoding="utf-8"))
@@ -2429,10 +2764,48 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
         post_summary_map = build_post_summary_map(threads)
         post_mentions_map, mentions_audit_rows = build_post_mentions_map(threads, config)
     for thread in threads:
-        filename = f"{thread.thread_key}.html"
-        (thread_dir / filename).write_text(
-            render_thread_page(config, thread, post_theme_map, post_summary_map, post_mentions_map), encoding="utf-8"
-        )
+        batch_count = thread_batch_count(thread)
+        for batch_index in range(batch_count):
+            filename = modern_thread_page_name(thread.thread_key, batch_index)
+            (thread_dir / filename).write_text(
+                render_thread_page(
+                    config,
+                    thread,
+                    post_theme_map,
+                    post_summary_map,
+                    post_mentions_map,
+                    batch_index=batch_index,
+                ),
+                encoding="utf-8",
+            )
+    for thread in original_threads:
+        sorted_posts = sorted(thread.posts, key=lambda item: item.post_id)
+        batch_count = max(1, math.ceil(len(sorted_posts) / THREAD_BATCH_SIZE))
+        if not sorted_posts:
+            filename = original_web_thread_page_name(thread.thread_key, 0)
+            (original_web_thread_dir / filename).write_text(
+                render_original_web_thread_batch_page(
+                    thread,
+                    batch_index=0,
+                    batch_posts=[],
+                    batch_count=batch_count,
+                ),
+                encoding="utf-8",
+            )
+            continue
+        for batch_index in range(batch_count):
+            start = batch_index * THREAD_BATCH_SIZE
+            batch_posts = sorted_posts[start : start + THREAD_BATCH_SIZE]
+            filename = original_web_thread_page_name(thread.thread_key, batch_index)
+            (original_web_thread_dir / filename).write_text(
+                render_original_web_thread_batch_page(
+                    thread,
+                    batch_index=batch_index,
+                    batch_posts=batch_posts,
+                    batch_count=batch_count,
+                ),
+                encoding="utf-8",
+            )
     return mentions_audit_rows
 
 
