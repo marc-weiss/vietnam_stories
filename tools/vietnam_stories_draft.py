@@ -11,6 +11,7 @@ import math
 import re
 import signal
 import socket
+import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -1098,6 +1099,7 @@ def render_original_web_page(title: str, body: str, *, root_prefix: str) -> str:
         home_href=f"{root_prefix}index.html",
         producer_href=f"{root_prefix}producer_letter.html",
         credits_href=f"{root_prefix}credits.html",
+        downloads_href=f"{root_prefix}downloads.html",
     )}
     {render_site_titlebar(f"{root_prefix}index.html")}
   </header>
@@ -1971,12 +1973,14 @@ def render_top_nav(
     home_href: str,
     producer_href: str,
     credits_href: str,
+    downloads_href: str,
 ) -> str:
     utility = []
     for key, label, href in (
         ("home", "Home", home_href),
         ("producer", "Producer Letter", producer_href),
         ("credits", "Credits", credits_href),
+        ("downloads", "Downloads", downloads_href),
     ):
         if key == current_utility:
             utility.append(f"<strong>{label}</strong>")
@@ -2140,6 +2144,7 @@ def render_info_page(config: dict, *, page_title: str, eyebrow: str, current_uti
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
+        downloads_href="downloads.html",
     )}
     {render_site_titlebar("index.html")}
   </header>
@@ -2177,6 +2182,7 @@ def render_archive_page(
     home_href: str,
     producer_href: str,
     credits_href: str,
+    downloads_href: str,
     original_enabled: bool,
     original_web_enabled: bool,
     theme_enabled: bool,
@@ -2192,6 +2198,7 @@ def render_archive_page(
         home_href=home_href,
         producer_href=producer_href,
         credits_href=credits_href,
+        downloads_href=downloads_href,
     )}
     {render_site_titlebar(home_href)}
   </header>
@@ -2373,6 +2380,7 @@ def render_home_page(config: dict, ordered_threads: list[Thread], original_enabl
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
+        downloads_href="downloads.html",
         original_enabled=original_enabled,
         original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
@@ -2402,6 +2410,7 @@ def render_original_page(config: dict, ordered_threads: list[Thread]) -> str:
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
+        downloads_href="downloads.html",
         original_enabled=True,
         original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
@@ -2451,6 +2460,7 @@ def render_thread_page(
         home_href="../index.html",
         producer_href="../producer_letter.html",
         credits_href="../credits.html",
+        downloads_href="../downloads.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
         original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
@@ -2551,6 +2561,7 @@ def render_topic_set_page(
         home_href="../index.html",
         producer_href="../producer_letter.html",
         credits_href="../credits.html",
+        downloads_href="../downloads.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
         original_web_enabled=True,
         theme_enabled=True,
@@ -2594,6 +2605,7 @@ def render_topics_page(config: dict, matched: list[dict]) -> str:
         home_href="index.html",
         producer_href="producer_letter.html",
         credits_href="credits.html",
+        downloads_href="downloads.html",
         original_enabled=bool(config.get("enable_original_order_view", False)),
         original_web_enabled=True,
         theme_enabled=True,
@@ -2655,6 +2667,91 @@ def emit_csv(threads: list[Thread], path: Path) -> None:
                 )
 
 
+def emit_jsonc_archive(threads: list[Thread], path: Path) -> None:
+    payload = {
+        "format": "vietnam-stories-archive",
+        "version": 1,
+        "site_title": "Re: Vietnam: Stories Since the War",
+        "exported_at": datetime.now().astimezone().isoformat(),
+        "thread_count": len(threads),
+        "post_count": sum(len(thread.posts) for thread in threads),
+        "threads": [
+            {
+                "thread_key": thread.thread_key,
+                "thread_index_id": thread.index_id,
+                "thread_title": thread.thread_title,
+                "directory": thread.directory,
+                "original_position": thread.original_position,
+                "post_count": len(thread.posts),
+                "posts": [
+                    {
+                        "post_id": post.post_id,
+                        "created_at": post.created_at.isoformat(),
+                        "created_at_display": post.created_at_display,
+                        "post_title": post.post_title,
+                        "post_body": post.post_body,
+                        "author": {
+                            "display_name": post.name_string,
+                            "email": post.email_string,
+                        },
+                    }
+                    for post in sorted(thread.posts, key=lambda item: item.post_id)
+                ],
+            }
+            for thread in threads
+        ],
+    }
+    json_body = json.dumps(payload, ensure_ascii=False, indent=2)
+    commented = (
+        "{\n"
+        '  // Normalized export of the original Vietnam Stories forum corpus.\n'
+        '  // This file uses JSONC (JSON with comments), a common industry format for human-editable JSON.\n'
+        '  // Remove comment lines if you need strict RFC 8259 JSON.\n'
+        + json_body[1:]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(commented, encoding="utf-8")
+
+
+def format_file_size(size: int) -> str:
+    units = ["bytes", "KB", "MB", "GB"]
+    value = float(size)
+    unit_index = 0
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(value)} {units[unit_index]}"
+    return f"{value:.1f} {units[unit_index]}"
+
+
+def create_zip_archive(zip_path: Path, base_dir: Path, *, exclude_paths: set[Path] | None = None) -> None:
+    exclude_paths = exclude_paths or set()
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        for file_path in sorted(base_dir.rglob("*")):
+            if file_path.is_dir():
+                continue
+            if any(file_path == excluded for excluded in exclude_paths):
+                continue
+            handle.write(file_path, file_path.relative_to(base_dir))
+
+
+def render_downloads_content(
+    *,
+    data_href: str,
+    data_size_text: str,
+    site_href: str,
+    site_size_text: str,
+) -> str:
+    return f"""
+<section class="rich-copy">
+  <p><a href="{data_href}">Download the original-data JSONC archive</a> ({escape_text(data_size_text)}). This zip contains a commented JSONC export of the normalized thread and post data, including thread metadata, preserved display timestamps, post text, and author fields for archival or research use.</p>
+  <p><a href="{site_href}">Download the static HTML site archive</a> ({escape_text(site_size_text)}). This zip contains the full static website, including the modern archive views, the original web design views, downloads page, and supporting downloadable assets.</p>
+</section>
+"""
+
+
 def emit_mentions_audit(rows: list[dict[str, str]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -2681,6 +2778,8 @@ def emit_mentions_audit(rows: list[dict[str, str]], path: Path) -> None:
 
 def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[dict[str, str]]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    downloads_dir = output_dir / "downloads"
+    downloads_dir.mkdir(exist_ok=True)
     thread_dir = output_dir / "threads"
     thread_dir.mkdir(exist_ok=True)
     original_web_thread_dir = output_dir / "threads_original_web"
@@ -2806,6 +2905,45 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
                 ),
                 encoding="utf-8",
             )
+
+    data_jsonc_path = downloads_dir / "vietnam_stories_original_data.jsonc"
+    data_zip_path = downloads_dir / "vietnam_stories_original_data_jsonc.zip"
+    static_zip_path = downloads_dir / "vietnam_stories_static_html_site.zip"
+
+    emit_jsonc_archive(threads, data_jsonc_path)
+    with zipfile.ZipFile(data_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        handle.write(data_jsonc_path, data_jsonc_path.name)
+
+    placeholder_downloads = render_info_page(
+        config,
+        page_title="Downloads",
+        eyebrow="Downloads",
+        current_utility="downloads",
+        content_html=render_downloads_content(
+            data_href=f"downloads/{data_zip_path.name}",
+            data_size_text=format_file_size(data_zip_path.stat().st_size),
+            site_href=f"downloads/{static_zip_path.name}",
+            site_size_text="Calculating…",
+        ),
+    )
+    (output_dir / "downloads.html").write_text(placeholder_downloads, encoding="utf-8")
+
+    create_zip_archive(static_zip_path, output_dir, exclude_paths={static_zip_path})
+    static_size_text = format_file_size(static_zip_path.stat().st_size)
+    final_downloads = render_info_page(
+        config,
+        page_title="Downloads",
+        eyebrow="Downloads",
+        current_utility="downloads",
+        content_html=render_downloads_content(
+            data_href=f"downloads/{data_zip_path.name}",
+            data_size_text=format_file_size(data_zip_path.stat().st_size),
+            site_href=f"downloads/{static_zip_path.name}",
+            site_size_text=static_size_text,
+        ),
+    )
+    (output_dir / "downloads.html").write_text(final_downloads, encoding="utf-8")
+    create_zip_archive(static_zip_path, output_dir, exclude_paths={static_zip_path})
     return mentions_audit_rows
 
 
