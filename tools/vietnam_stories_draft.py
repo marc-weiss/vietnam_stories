@@ -1749,10 +1749,22 @@ h1, h2, h3 {
   display: grid;
   gap: 24px;
 }
+.thread-list.thread-list-compact {
+  gap: 14px;
+}
 .thread-card, .topic-card, .post-card {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 16px;
+}
+.thread-list.thread-list-compact .thread-card {
+  padding: 12px 14px;
+}
+.thread-list.thread-list-compact .thread-card h2 {
+  margin: 0;
+}
+.thread-list.thread-list-compact .thread-card .post-meta {
+  margin-top: 4px;
 }
 .topic-match-list {
   display: grid;
@@ -2135,7 +2147,19 @@ def render_home_content() -> str:
     )
 
 
-def render_info_page(config: dict, *, page_title: str, eyebrow: str, current_utility: str, content_html: str) -> str:
+def render_info_page(
+    config: dict,
+    *,
+    page_title: str,
+    eyebrow: str,
+    current_utility: str,
+    content_html: str,
+    visible_title: str | None = None,
+) -> str:
+    if visible_title is None:
+        visible_title = page_title
+    title_markup = f"<h1>{escape_text(visible_title)}</h1>" if visible_title else ""
+    eyebrow_markup = f'<div class="eyebrow">{escape_text(eyebrow)}</div>' if eyebrow else ""
     body = f"""
 <main class="page">
   <header class="masthead">
@@ -2159,8 +2183,8 @@ def render_info_page(config: dict, *, page_title: str, eyebrow: str, current_uti
       theme_enabled=bool(config.get("output_topic_page", False)),
   )}
   <section class="page-intro">
-    <div class="eyebrow">{escape_text(eyebrow)}</div>
-    <h1>{escape_text(page_title)}</h1>
+    {eyebrow_markup}
+    {title_markup}
   </section>
   {content_html}
  </main>
@@ -2384,7 +2408,7 @@ def render_home_page(config: dict, ordered_threads: list[Thread], original_enabl
         original_enabled=original_enabled,
         original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
-        body_html='<section class="thread-list">' + ''.join(items) + "</section>",
+        body_html='<section class="thread-list thread-list-compact">' + ''.join(items) + "</section>",
     )
 
 
@@ -2414,7 +2438,7 @@ def render_original_page(config: dict, ordered_threads: list[Thread]) -> str:
         original_enabled=True,
         original_web_enabled=True,
         theme_enabled=bool(config.get("output_topic_page", False)),
-        body_html='<section class="thread-list">' + ''.join(items) + "</section>",
+        body_html='<section class="thread-list thread-list-compact">' + ''.join(items) + "</section>",
     )
 
 
@@ -2919,6 +2943,7 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
         page_title="Downloads",
         eyebrow="Downloads",
         current_utility="downloads",
+        visible_title="",
         content_html=render_downloads_content(
             data_href=f"downloads/{data_zip_path.name}",
             data_size_text=format_file_size(data_zip_path.stat().st_size),
@@ -2935,6 +2960,7 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
         page_title="Downloads",
         eyebrow="Downloads",
         current_utility="downloads",
+        visible_title="",
         content_html=render_downloads_content(
             data_href=f"downloads/{data_zip_path.name}",
             data_size_text=format_file_size(data_zip_path.stat().st_size),
