@@ -353,6 +353,13 @@ def escape_text(text: str) -> str:
     return html.escape(text, quote=False)
 
 
+def normalize_thread_title(text: str) -> str:
+    primary = text.split("\t", 1)[0]
+    cleaned = clean_text(primary)
+    cleaned = re.sub(r"\s{2,}\d+\s*$", "", cleaned).strip()
+    return cleaned
+
+
 def tokenize(text: str) -> list[str]:
     return [token.lower() for token in TOKEN_REGEX.findall(text)]
 
@@ -1092,7 +1099,7 @@ body.original-web-body {
 def render_original_web_page(title: str, body: str, *, root_prefix: str) -> str:
     return render_page(
         title,
-        f"""<main class="page original-web-page">
+        f"""<main id="main-content" class="page original-web-page">
   <header class="masthead">
     {render_top_nav(
         current_utility="",
@@ -1321,7 +1328,7 @@ def load_threads_from_source(source_root: Path, included_forums: Iterable[str]) 
             parts = raw_line.split("\t", 1)
             if len(parts) != 2:
                 continue
-            thread_id_text, title = parts[0].strip(), parts[1].strip()
+            thread_id_text, title = parts[0].strip(), normalize_thread_title(parts[1].strip())
             if not thread_id_text.isdigit() or not title:
                 continue
             thread_id = int(thread_id_text)
@@ -1576,6 +1583,19 @@ a {
   width: min(920px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 32px 0 64px;
+}
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  z-index: 1000;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #000000;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 16px;
 }
 .site-footer {
   width: min(920px, calc(100vw - 32px));
@@ -1956,6 +1976,7 @@ document.addEventListener("click", (event) => {
   const isHidden = full.hidden;
   full.hidden = !isHidden;
   preview.hidden = isHidden;
+  button.setAttribute("aria-expanded", isHidden ? "true" : "false");
   button.textContent = isHidden ? "Show Less" : "Show All";
 });
 """
@@ -1979,8 +2000,9 @@ def render_page(
   <style>{base_css()}{extra_css}</style>
 </head>
 <body{body_attr}>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 {body}
-<footer class="site-footer">Copyright 2026 Web Lab</footer>
+<footer class="site-footer">Copyright © 2026 Web Lab</footer>
 <script>{base_script()}{extra_script}</script>
 </body>
 </html>
@@ -2003,10 +2025,10 @@ def render_top_nav(
         ("downloads", "Downloads", downloads_href),
     ):
         if key == current_utility:
-            utility.append(f"<strong>{label}</strong>")
+            utility.append(f'<strong aria-current="page">{label}</strong>')
         else:
             utility.append(f'<a href="{href}">{label}</a>')
-    return '<div class="top-nav"><nav class="top-nav-group">' + "".join(utility) + "</nav></div>"
+    return '<div class="top-nav"><nav class="top-nav-group" aria-label="Utility">' + "".join(utility) + "</nav></div>"
 
 
 def render_explore_nav(
@@ -2032,10 +2054,10 @@ def render_explore_nav(
         if not enabled:
             continue
         if key == current_primary:
-            items.append(f"<strong>{label}</strong>")
+            items.append(f'<strong aria-current="page">{label}</strong>')
         else:
             items.append(f'<a href="{href}">{label}</a>')
-    return '<nav class="explore-nav"><span class="explore-nav-prefix">Explore by: </span><span class="explore-nav-choices">' + "".join(items) + "</span></nav>"
+    return '<nav class="explore-nav" aria-label="Archive views"><span class="explore-nav-prefix">Explore by: </span><span class="explore-nav-choices">' + "".join(items) + "</span></nav>"
 
 
 def render_site_titlebar(home_href: str) -> str:
@@ -2169,7 +2191,7 @@ def render_info_page(
     title_markup = f"<h1>{escape_text(visible_title)}</h1>" if visible_title else ""
     eyebrow_markup = f'<div class="eyebrow">{escape_text(eyebrow)}</div>' if eyebrow else ""
     body = f"""
-<main class="page">
+<main id="main-content" class="page">
   <header class="masthead">
     {render_top_nav(
         current_utility=current_utility,
@@ -2223,7 +2245,7 @@ def render_archive_page(
     lede_markup = f'<p class="lede">{escape_text(lede)}</p>' if lede else ""
     eyebrow_markup = f'<div class="eyebrow">{escape_text(eyebrow)}</div>' if eyebrow else ""
     body = f"""
-<main class="page">
+<main id="main-content" class="page">
   <header class="masthead">
     {render_top_nav(
         current_utility="",
@@ -2300,7 +2322,10 @@ def render_post_card(
     full_markup = ""
     if truncated:
         full_markup = f'<div id="{post_key}-full" class="post-body" hidden>{escape_text(post.post_body)}</div>'
-        toggle = f'<button class="toggle" data-expand-target="{post_key}">Show All</button>'
+        toggle = (
+            f'<button class="toggle" data-expand-target="{post_key}" '
+            f'aria-controls="{post_key}-full" aria-expanded="false">Show All</button>'
+        )
 
     summary_text = post_summary_map.get((thread.thread_key, post.post_id), "")
     mentions = post_mentions_map.get((thread.thread_key, post.post_id), [])
