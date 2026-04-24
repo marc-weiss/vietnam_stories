@@ -1577,6 +1577,13 @@ a {
   margin: 0 auto;
   padding: 32px 0 64px;
 }
+.site-footer {
+  width: min(920px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 0 0 32px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
 .masthead {
   border-bottom: 1px solid var(--rule);
   margin-bottom: 24px;
@@ -1968,11 +1975,12 @@ def render_page(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(title, quote=False)}</title>
+  <title>Re: Vietnam: Stores Since the War</title>
   <style>{base_css()}{extra_css}</style>
 </head>
 <body{body_attr}>
 {body}
+<footer class="site-footer">Copyright 2026 Web Lab</footer>
 <script>{base_script()}{extra_script}</script>
 </body>
 </html>
@@ -2691,7 +2699,7 @@ def emit_csv(threads: list[Thread], path: Path) -> None:
                 )
 
 
-def emit_jsonc_archive(threads: list[Thread], path: Path) -> None:
+def emit_json_archive(threads: list[Thread], path: Path) -> None:
     payload = {
         "format": "vietnam-stories-archive",
         "version": 1,
@@ -2725,16 +2733,8 @@ def emit_jsonc_archive(threads: list[Thread], path: Path) -> None:
             for thread in threads
         ],
     }
-    json_body = json.dumps(payload, ensure_ascii=False, indent=2)
-    commented = (
-        "{\n"
-        '  // Normalized export of the original Vietnam Stories forum corpus.\n'
-        '  // This file uses JSONC (JSON with comments), a common industry format for human-editable JSON.\n'
-        '  // Remove comment lines if you need strict RFC 8259 JSON.\n'
-        + json_body[1:]
-    )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(commented, encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def format_file_size(size: int) -> str:
@@ -2770,7 +2770,7 @@ def render_downloads_content(
 ) -> str:
     return f"""
 <section class="rich-copy">
-  <p><a href="{data_href}">Download the original-data JSONC archive</a> ({escape_text(data_size_text)}). This zip contains a commented JSONC export of the normalized thread and post data, including thread metadata, preserved display timestamps, post text, and author fields for archival or research use.</p>
+  <p><a href="{data_href}">Download the original-data JSON archive</a> ({escape_text(data_size_text)}). This zip contains a strict JSON export of the normalized thread and post data, including thread metadata, preserved display timestamps, post text, and author fields for archival or research use.</p>
   <p><a href="{site_href}">Download the static HTML site archive</a> ({escape_text(site_size_text)}). This zip contains the full static website, including the modern archive views, the original web design views, downloads page, and supporting downloadable assets.</p>
 </section>
 """
@@ -2930,13 +2930,19 @@ def write_site(config: dict, threads: list[Thread], output_dir: Path) -> list[di
                 encoding="utf-8",
             )
 
-    data_jsonc_path = downloads_dir / "vietnam_stories_original_data.jsonc"
-    data_zip_path = downloads_dir / "vietnam_stories_original_data_jsonc.zip"
+    data_json_path = downloads_dir / "vietnam_stories_original_data.json"
+    data_zip_path = downloads_dir / "vietnam_stories_original_data_json.zip"
+    legacy_data_jsonc_path = downloads_dir / "vietnam_stories_original_data.jsonc"
+    legacy_data_zip_path = downloads_dir / "vietnam_stories_original_data_jsonc.zip"
     static_zip_path = downloads_dir / "vietnam_stories_static_html_site.zip"
 
-    emit_jsonc_archive(threads, data_jsonc_path)
+    for legacy_path in (legacy_data_jsonc_path, legacy_data_zip_path):
+        if legacy_path.exists():
+            legacy_path.unlink()
+
+    emit_json_archive(threads, data_json_path)
     with zipfile.ZipFile(data_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as handle:
-        handle.write(data_jsonc_path, data_jsonc_path.name)
+        handle.write(data_json_path, data_json_path.name)
 
     placeholder_downloads = render_info_page(
         config,
